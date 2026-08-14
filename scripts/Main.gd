@@ -2,6 +2,12 @@ extends Control
 
 const SAVE_PATH := "user://savegame.json"
 
+# A datacenter is server hardware: it raises how many queries/second you can
+# serve (Revenue throughput), not how much energy exists. A power plant is
+# the energy source that feeds those datacenters.
+const BASE_SERVING_CAPACITY := 5.0
+const SERVING_CAPACITY_PER_DATACENTER := 8.0
+
 # Population segments, roughly grounded in real-world figures (order of
 # magnitude, not precise) rather than an even split:
 # - Developers: ~28-47M professional software developers worldwide (various
@@ -79,6 +85,7 @@ var users_label: Label
 var revenue_label: Label
 var data_label: Label
 var energy_label: Label
+var capacity_label: Label
 var strength_label_dashboard: Label
 var progress_bar: ProgressBar
 var segment_bars: Array = []
@@ -280,6 +287,10 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	energy_label.modulate = Color(1.0, 0.75, 0.35)
 	resources_card.add_child(energy_label)
 
+	capacity_label = Label.new()
+	capacity_label.modulate = Color(0.55, 0.85, 0.55)
+	resources_card.add_child(capacity_label)
+
 	strength_label_dashboard = Label.new()
 	strength_label_dashboard.modulate = Color(0.9, 0.7, 1.0)
 	resources_card.add_child(strength_label_dashboard)
@@ -368,15 +379,33 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 	var infra_card := _new_card(panel)
 	_section_title("Infrastructure — funded by Revenue", infra_card)
 
+	var datacenter_row := VBoxContainer.new()
+	datacenter_row.add_theme_constant_override("separation", 2)
 	datacenter_button = Button.new()
 	datacenter_button.custom_minimum_size = Vector2(0, 44)
 	datacenter_button.pressed.connect(_on_datacenter_pressed)
-	infra_card.add_child(datacenter_button)
+	datacenter_row.add_child(datacenter_button)
+	var datacenter_desc := Label.new()
+	datacenter_desc.text = "Server hardware. Raises how many users you can serve at once — needs energy to run."
+	datacenter_desc.autowrap_mode = TextServer.AUTOWRAP_WORD
+	datacenter_desc.modulate = Color(1, 1, 1, 0.55)
+	datacenter_desc.add_theme_font_size_override("font_size", 13)
+	datacenter_row.add_child(datacenter_desc)
+	infra_card.add_child(datacenter_row)
 
+	var power_row := VBoxContainer.new()
+	power_row.add_theme_constant_override("separation", 2)
 	power_button = Button.new()
 	power_button.custom_minimum_size = Vector2(0, 44)
 	power_button.pressed.connect(_on_power_pressed)
-	infra_card.add_child(power_button)
+	power_row.add_child(power_button)
+	var power_desc := Label.new()
+	power_desc.text = "Energy source. Generates and stores more power to keep your datacenters running."
+	power_desc.autowrap_mode = TextServer.AUTOWRAP_WORD
+	power_desc.modulate = Color(1, 1, 1, 0.55)
+	power_desc.add_theme_font_size_override("font_size", 13)
+	power_row.add_child(power_desc)
+	infra_card.add_child(power_row)
 
 
 func _build_tab_bar(shell: VBoxContainer) -> void:
@@ -496,6 +525,10 @@ func _power_cost() -> float:
 	return 15.0 * pow(1.6, power_level)
 
 
+func _serving_capacity() -> float:
+	return BASE_SERVING_CAPACITY + datacenter_count * SERVING_CAPACITY_PER_DATACENTER
+
+
 func _recompute_growth_multiplier() -> void:
 	permanent_growth_multiplier = 1.0
 	for i in range(unlocked_capabilities):
@@ -519,7 +552,6 @@ func _on_datacenter_pressed() -> void:
 	if revenue >= cost:
 		revenue -= cost
 		datacenter_count += 1
-		energy_capacity += 50.0
 
 
 func _on_power_pressed() -> void:
@@ -528,6 +560,7 @@ func _on_power_pressed() -> void:
 		revenue -= cost
 		power_level += 1
 		energy_regen += 2.0
+		energy_capacity += 20.0
 
 
 func _on_reset_pressed() -> void:
@@ -571,7 +604,8 @@ func _process(delta: float) -> void:
 
 	energy = min(energy_capacity, energy + energy_regen * delta)
 
-	var desired_revenue := users * revenue_per_user * delta
+	var capacity_limited_rate: float = min(users * revenue_per_user, _serving_capacity())
+	var desired_revenue := capacity_limited_rate * delta
 	var energy_needed := desired_revenue * energy_per_revenue
 	var actual_revenue := desired_revenue
 	if energy_needed > energy:
@@ -623,15 +657,17 @@ func _check_milestones() -> void:
 
 func _update_labels() -> void:
 	status_label.text = "%s — %s" % [model_name, ("GLOBAL TAKEOVER COMPLETE" if game_won else "active")]
-	users_label.text = "Users: %s" % _format_number(users)
+	users_label.text = "Users: %s" % _format_number(floor(users))
 
-	var revenue_rate: float = min(users * revenue_per_user, energy_regen / energy_per_revenue)
+	var sustainable_rate: float = energy_regen / energy_per_revenue
+	var revenue_rate: float = min(users * revenue_per_user, _serving_capacity(), sustainable_rate)
 	revenue_label.text = "Revenue: $%s  (+$%s/s)" % [_format_number(revenue), _format_number(revenue_rate)]
 
 	var data_rate: float = users * data_per_user
 	data_label.text = "Data: %s  (+%s/s)" % [_format_number(data), _format_number(data_rate)]
 
 	energy_label.text = "Energy: %d / %d" % [int(energy), int(energy_capacity)]
+	capacity_label.text = "Server capacity: %s/s (%d datacenters)" % [_format_number(_serving_capacity()), datacenter_count]
 	progress_bar.value = users
 
 	var strength_short := "Model strength: ×%.2f growth" % permanent_growth_multiplier
@@ -661,7 +697,7 @@ func _update_labels() -> void:
 	datacenter_button.text = "Build datacenter (%d) — costs $%s" % [datacenter_count, _format_number(_datacenter_cost())]
 	datacenter_button.disabled = revenue < _datacenter_cost()
 
-	power_button.text = "Upgrade power grid (level %d) — costs $%s" % [power_level, _format_number(_power_cost())]
+	power_button.text = "Build power plant (level %d) — costs $%s" % [power_level, _format_number(_power_cost())]
 	power_button.disabled = revenue < _power_cost()
 
 	upgrade_dot.visible = _is_any_upgrade_available()
@@ -686,7 +722,7 @@ func _format_number(n: float) -> String:
 		return "%.2fM" % (n / 1000000.0)
 	if n >= 1000.0:
 		return "%.1fK" % (n / 1000.0)
-	return "%.1f" % n
+	return "%d" % int(round(n))
 
 
 func _start_save_timer() -> void:
