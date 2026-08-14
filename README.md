@@ -1,6 +1,8 @@
 # CousinGame
 
-Simpel mobiel spelletje, gebouwd met [Godot 4](https://godotengine.org/) (GDScript, 2D, portrait).
+**Concept:** Je lanceert je eigen taalmodel. Gebruikers stellen het vragen en leveren daarmee rekenkracht op; met rekenkracht train je het model (sneller/slimmer → meer groei) en bouw je datacenters/energie uit. Energie is de bottleneck. Doel: wereldwijde verspreiding voltooien. Idle/strategy-spel, een beetje Universal Paperclips × Plague Inc., met een AI-thema.
+
+Gebouwd met [Godot 4](https://godotengine.org/) (GDScript, portrait, UI-based).
 
 ## Setup (eenmalig, voor beide van jullie)
 
@@ -41,10 +43,16 @@ assets/
   audio/    # geluid/muziek
 ```
 
-## Volgende stappen
+## Huidige status (MVP)
 
-- [ ] Bepaal het genre/concept (bv. endless runner, puzzel, klassieke arcade-clone)
-- [ ] Basisspeler + besturing (touch input)
-- [ ] Eén werkend level/scherm
-- [ ] Score/game-over flow
+- [x] Concept bepaald
+- [x] Kernloop: naam kiezen → users genereren rekenkracht → upgrades → energie als bottleneck
+- [ ] Echte wereldkaart i.p.v. voortgangsbalk
+- [ ] Balans tunen (groeisnelheid, kosten, energieverbruik)
+- [ ] Save/load van voortgang
+- [ ] Geluid/muziek + visuele polish
 - [ ] Testen op een echt Android-toestel (Godot → Export → Android)
+
+## Spellogica
+
+Alles zit in `scripts/Main.gd` (UI wordt in code opgebouwd, geen losse `.tscn`-knooppunten om merge-conflicten te vermijden). Belangrijkste variabelen bovenaan het script: groeisnelheid, kosten van upgrades, energieverbruik. Pas die aan om de balans te testen.
