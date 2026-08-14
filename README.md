@@ -43,15 +43,19 @@ assets/
   audio/    # geluid/muziek
 ```
 
-## Huidige status (MVP)
+## Huidige status (v2)
 
 - [x] Concept bepaald
 - [x] Kernloop: naam kiezen → users genereren rekenkracht → upgrades → energie als bottleneck
-- [ ] Echte wereldkaart i.p.v. voortgangsbalk
-- [ ] Balans tunen (groeisnelheid, kosten, energieverbruik)
-- [ ] Save/load van voortgang
-- [ ] Geluid/muziek + visuele polish
+- [x] Verspreiding per regio (8 regio's die na elkaar "vollopen", i.p.v. één kale balk)
+- [x] Verhaalmomenten die vrijkomen bij gebruikersaantallen (bedrijven, media, overheden, robots, wereldovername)
+- [x] Automatisch opslaan (elke 5s naar `user://savegame.json`) + "Nieuw spel beginnen"-knop
+- [ ] Echte geografische wereldkaart i.p.v. regio-balken
+- [ ] Balans tunen (groeisnelheid, kosten, energieverbruik) — huidige cijfers zijn een eerste gok
+- [ ] Geluid/muziek + visuele polish (iconen, kleuren per regio)
 - [ ] Testen op een echt Android-toestel (Godot → Export → Android)
+
+Savegame-locatie op Windows: `%APPDATA%\Godot\app_userdata\CousinGame\savegame.json`. Verwijder dat bestand (of gebruik de "Nieuw spel beginnen"-knop in het spel) om opnieuw te beginnen.
 
 ## Spellogica
 
