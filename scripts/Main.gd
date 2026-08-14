@@ -526,8 +526,19 @@ func _update_labels() -> void:
 	power_button.text = "Upgrade power grid (level %d) — costs %s compute" % [power_level, _format_number(_power_cost())]
 	power_button.disabled = compute < _power_cost()
 
-	var next_cap_affordable := unlocked_capabilities < capabilities.size() and compute >= capabilities[unlocked_capabilities]["cost"]
-	upgrade_dot.visible = next_cap_affordable or compute >= _datacenter_cost() or compute >= _power_cost()
+	upgrade_dot.visible = _is_any_upgrade_available()
+
+
+func _is_any_upgrade_available() -> bool:
+	if unlocked_capabilities < capabilities.size():
+		var next_cap = capabilities[unlocked_capabilities]
+		if compute >= next_cap["cost"]:
+			return true
+	if compute >= _datacenter_cost():
+		return true
+	if compute >= _power_cost():
+		return true
+	return false
 
 
 func _format_number(n: float) -> String:
