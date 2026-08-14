@@ -4,9 +4,13 @@ const SAVE_PATH := "user://savegame.json"
 
 # A datacenter is server hardware: it raises how many queries/second you can
 # serve (Revenue throughput), not how much energy exists. A power plant is
-# the energy source that feeds those datacenters.
-const BASE_SERVING_CAPACITY := 5.0
-const SERVING_CAPACITY_PER_DATACENTER := 8.0
+# the energy source that feeds those datacenters. These are scaled to match
+# a modest, not-absurd revenue_per_user (see below) — same relative pacing
+# as before, just denominated in believable dollar amounts.
+const BASE_SERVING_CAPACITY := 0.025
+const SERVING_CAPACITY_PER_DATACENTER := 0.04
+
+const STARTING_USERS := 120.0
 
 # Population segments, roughly grounded in real-world figures (order of
 # magnitude, not precise) rather than an even split:
@@ -20,15 +24,19 @@ const SERVING_CAPACITY_PER_DATACENTER := 8.0
 # Segments are listed in the order they realistically start adopting new AI
 # tools (early/technical audiences first, skeptics last), and sum to the
 # same ~5.38B total online population used before.
+# "lat"/"lon" place each segment's glowing dot on the globe visualization.
+# These are flavor (a scattered, visually pleasing spread loosely nodding to
+# real tech hubs), not a claim about where each segment's users actually are
+# — the segments themselves are demographic, not geographic.
 const SEGMENT_DATA := [
-	{"name": "AI Enthusiasts", "users": 150000000.0},
-	{"name": "Developers", "users": 30000000.0},
-	{"name": "Students", "users": 250000000.0},
-	{"name": "Knowledge Workers", "users": 1000000000.0},
-	{"name": "Businesses", "users": 300000000.0},
-	{"name": "Everyday Consumers", "users": 2600000000.0},
-	{"name": "Governments", "users": 300000000.0},
-	{"name": "Skeptics", "users": 750000000.0},
+	{"name": "AI Enthusiasts", "users": 150000000.0, "lat": 37.0, "lon": -122.0},
+	{"name": "Developers", "users": 30000000.0, "lat": 13.0, "lon": 77.0},
+	{"name": "Students", "users": 250000000.0, "lat": 51.0, "lon": 0.0},
+	{"name": "Knowledge Workers", "users": 1000000000.0, "lat": 40.0, "lon": -74.0},
+	{"name": "Businesses", "users": 300000000.0, "lat": 35.0, "lon": 139.0},
+	{"name": "Everyday Consumers", "users": 2600000000.0, "lat": -23.0, "lon": -46.0},
+	{"name": "Governments", "users": 300000000.0, "lat": 50.0, "lon": 4.0},
+	{"name": "Skeptics", "users": 750000000.0, "lat": -33.0, "lon": 151.0},
 ]
 
 # --- Game state ---
@@ -38,15 +46,17 @@ const SEGMENT_DATA := [
 # costs power); Data collection is not. Capabilities are permanent — once
 # trained into the model, they stay; they don't fade like a temporary buff.
 var model_name: String = ""
-var users: float = 2.0
+var users: float = STARTING_USERS
 var revenue: float = 0.0
 var data: float = 0.0
 var energy: float = 100.0
 var energy_capacity: float = 100.0
 var energy_regen: float = 5.0
-var revenue_per_user: float = 0.4
+# $0.002/user/second: at the 120-user start that's ~$0.24/s — a small,
+# believable early-stage number instead of ~$1/s from just 2 people.
+var revenue_per_user: float = 0.002
 var data_per_user: float = 0.6
-var energy_per_revenue: float = 0.2
+var energy_per_revenue: float = 40.0
 var base_growth_rate: float = 0.006
 var permanent_growth_multiplier: float = 1.0
 var datacenter_count: int = 0
@@ -95,6 +105,8 @@ var datacenter_button: Button
 var power_button: Button
 var upgrade_dot: Control
 var notifications_container: VBoxContainer
+var globe_pivot: Node3D
+var globe_dots_root: Node3D
 
 
 func _ready() -> void:
@@ -121,14 +133,21 @@ func _init_segments() -> void:
 	segments.clear()
 	var total := 0.0
 	for d in SEGMENT_DATA:
-		segments.append({"name": d["name"], "population": d["users"], "current": 0.0, "notified": false})
+		segments.append({
+			"name": d["name"],
+			"population": d["users"],
+			"current": 0.0,
+			"notified": false,
+			"lat": d["lat"],
+			"lon": d["lon"],
+		})
 		total += d["users"]
 	max_users = total
 
 
 func _init_milestones() -> void:
 	milestones = [
-		{"threshold": 1000.0, "message": "Your first users are asking simple questions."},
+		{"threshold": 1000.0, "message": "Your user base passes 1,000 — word is spreading beyond your first testers."},
 		{"threshold": 1000000.0, "message": "Businesses start integrating your model into their software."},
 		{"threshold": 50000000.0, "message": "News outlets report on the rise of your model."},
 		{"threshold": 500000000.0, "message": "Governments are watching you closely."},
@@ -196,6 +215,10 @@ func _on_start_pressed() -> void:
 	name_overlay.visible = false
 	hud_root.visible = true
 	game_started = true
+	_show_notification(
+		"%s is live — launched with %d beta users." % [model_name, int(STARTING_USERS)],
+		"You and a friend just finished training %s, your first language model. It's rough around the edges, but it works — and it's live. You're starting with a small circle of %d beta testers. Every question they ask teaches the model something, and every answer it gives back builds trust. From here, it's about earning enough revenue to expand your infrastructure, and collecting enough data to make %s genuinely capable. Good luck." % [model_name, int(STARTING_USERS), model_name]
+	)
 	_save_game()
 
 
@@ -248,6 +271,85 @@ func _section_title(text: String, parent: Control) -> Label:
 	return label
 
 
+func _build_globe_card(panel: VBoxContainer) -> void:
+	var globe_card := _new_card(panel)
+	_section_title("Global reach", globe_card)
+
+	var viewport_container := SubViewportContainer.new()
+	viewport_container.custom_minimum_size = Vector2(260, 260)
+	viewport_container.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	viewport_container.stretch = true
+	globe_card.add_child(viewport_container)
+
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(260, 260)
+	viewport.transparent_bg = true
+	viewport_container.add_child(viewport)
+
+	var camera := Camera3D.new()
+	viewport.add_child(camera)
+	camera.position = Vector3(0, 0, 3.0)
+	camera.current = true
+	camera.look_at(Vector3.ZERO, Vector3.UP)
+
+	var light := DirectionalLight3D.new()
+	viewport.add_child(light)
+	light.rotation_degrees = Vector3(-40, 30, 0)
+	light.light_energy = 1.1
+
+	globe_pivot = Node3D.new()
+	viewport.add_child(globe_pivot)
+
+	var sphere := MeshInstance3D.new()
+	globe_pivot.add_child(sphere)
+	var sphere_mesh := SphereMesh.new()
+	sphere_mesh.radius = 1.0
+	sphere_mesh.height = 2.0
+	sphere.mesh = sphere_mesh
+	var sphere_mat := StandardMaterial3D.new()
+	sphere_mat.albedo_color = Color(0.05, 0.16, 0.34)
+	sphere_mat.metallic = 0.25
+	sphere_mat.roughness = 0.45
+	sphere_mat.rim_enabled = true
+	sphere_mat.rim = 0.6
+	sphere_mat.rim_tint = 0.85
+	sphere_mat.emission_enabled = true
+	sphere_mat.emission = Color(0.1, 0.3, 0.6)
+	sphere_mat.emission_energy_multiplier = 0.12
+	sphere.material_override = sphere_mat
+
+	globe_dots_root = Node3D.new()
+	globe_pivot.add_child(globe_dots_root)
+
+
+func _lat_lon_to_vec3(lat_deg: float, lon_deg: float, r: float) -> Vector3:
+	var lat := deg_to_rad(lat_deg)
+	var lon := deg_to_rad(lon_deg)
+	var x := r * cos(lat) * cos(lon)
+	var y := r * sin(lat)
+	var z := r * cos(lat) * sin(lon)
+	return Vector3(x, y, z)
+
+
+func _spawn_globe_dot(lat: float, lon: float) -> void:
+	if globe_dots_root == null:
+		return
+	var dot := MeshInstance3D.new()
+	globe_dots_root.add_child(dot)
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.035
+	mesh.height = 0.07
+	dot.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.4, 0.8, 1.0)
+	mat.emission_enabled = true
+	mat.emission = Color(0.4, 0.8, 1.0)
+	mat.emission_energy_multiplier = 3.0
+	dot.material_override = mat
+	dot.position = _lat_lon_to_vec3(lat, lon, 1.03)
+
+
 func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	dashboard_scroll = ScrollContainer.new()
 	dashboard_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -267,6 +369,8 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	event_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	event_label.modulate = Color(0.6, 0.85, 1.0)
 	panel.add_child(event_label)
+
+	_build_globe_card(panel)
 
 	var resources_card := _new_card(panel)
 	_section_title("Resources", resources_card)
@@ -467,7 +571,7 @@ func _build_notifications_layer() -> void:
 	add_child(notifications_container)
 
 
-func _show_notification(text: String) -> void:
+func _show_notification(headline: String, body: String = "") -> void:
 	var card := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.16, 0.19, 0.27)
@@ -485,12 +589,34 @@ func _show_notification(text: String) -> void:
 	row.add_theme_constant_override("separation", 8)
 	card.add_child(row)
 
-	var label := Label.new()
-	label.text = "📰 " + text
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	label.custom_minimum_size = Vector2(260, 0)
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(label)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 4)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(content)
+
+	var headline_label := Label.new()
+	headline_label.text = "📰 " + headline
+	headline_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	headline_label.custom_minimum_size = Vector2(260, 0)
+	content.add_child(headline_label)
+
+	if body != "":
+		var body_label := Label.new()
+		body_label.text = body
+		body_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+		body_label.modulate = Color(1, 1, 1, 0.75)
+		body_label.add_theme_font_size_override("font_size", 13)
+		body_label.visible = false
+		content.add_child(body_label)
+
+		var toggle_button := Button.new()
+		toggle_button.text = "Read more"
+		toggle_button.flat = true
+		toggle_button.pressed.connect(func():
+			body_label.visible = not body_label.visible
+			toggle_button.text = "Show less" if body_label.visible else "Read more"
+		)
+		content.add_child(toggle_button)
 
 	var close_button := Button.new()
 	close_button.text = "×"
@@ -500,11 +626,13 @@ func _show_notification(text: String) -> void:
 
 	notifications_container.add_child(card)
 
-	var timer := get_tree().create_timer(8.0)
-	timer.timeout.connect(func():
-		if is_instance_valid(card):
-			card.queue_free()
-	)
+	# Short toasts auto-fade; announcements with more to read stay until closed.
+	if body == "":
+		var timer := get_tree().create_timer(8.0)
+		timer.timeout.connect(func():
+			if is_instance_valid(card):
+				card.queue_free()
+		)
 
 
 func _show_dashboard_tab() -> void:
@@ -518,11 +646,11 @@ func _show_upgrades_tab() -> void:
 
 
 func _datacenter_cost() -> float:
-	return 25.0 * pow(1.7, datacenter_count)
+	return 0.125 * pow(1.7, datacenter_count)
 
 
 func _power_cost() -> float:
-	return 15.0 * pow(1.6, power_level)
+	return 0.075 * pow(1.6, power_level)
 
 
 func _serving_capacity() -> float:
@@ -568,7 +696,7 @@ func _on_reset_pressed() -> void:
 		DirAccess.remove_absolute(SAVE_PATH)
 
 	model_name = ""
-	users = 2.0
+	users = STARTING_USERS
 	revenue = 0.0
 	data = 0.0
 	energy = 100.0
@@ -591,6 +719,10 @@ func _on_reset_pressed() -> void:
 	for child in notifications_container.get_children():
 		child.queue_free()
 
+	if globe_dots_root != null:
+		for child in globe_dots_root.get_children():
+			child.queue_free()
+
 	event_label.text = ""
 	name_edit.text = ""
 	hud_root.visible = false
@@ -599,6 +731,9 @@ func _on_reset_pressed() -> void:
 
 
 func _process(delta: float) -> void:
+	if globe_pivot != null:
+		globe_pivot.rotate_y(delta * 0.35)
+
 	if not game_started or game_won:
 		return
 
@@ -641,6 +776,7 @@ func _distribute_segments(notify: bool) -> void:
 
 		if filled > 0.0 and not segment["notified"]:
 			segment["notified"] = true
+			_spawn_globe_dot(segment["lat"], segment["lon"])
 			if notify and was_empty:
 				_show_notification("%s are becoming fans of %s." % [segment["name"], model_name])
 
@@ -722,7 +858,11 @@ func _format_number(n: float) -> String:
 		return "%.2fM" % (n / 1000000.0)
 	if n >= 1000.0:
 		return "%.1fK" % (n / 1000.0)
-	return "%d" % int(round(n))
+	if n == floor(n):
+		return "%d" % int(n)
+	if n >= 1.0:
+		return "%.2f" % n
+	return "%.3f" % n
 
 
 func _start_save_timer() -> void:
@@ -772,7 +912,7 @@ func _load_game() -> bool:
 		return false
 
 	model_name = parsed.get("model_name", "Unnamed Model")
-	users = parsed.get("users", 2.0)
+	users = parsed.get("users", STARTING_USERS)
 	revenue = parsed.get("revenue", 0.0)
 	data = parsed.get("data", 0.0)
 	energy = parsed.get("energy", 100.0)
