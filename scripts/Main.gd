@@ -14,15 +14,21 @@ const REGION_DATA := [
 ]
 
 # --- Game state ---
+# Users give two distinct things: Revenue (they pay to use the model, funds
+# infrastructure) and Data (their interactions are training signal, funds
+# new capabilities). Revenue is energy-limited (serving queries at scale
+# costs power); Data collection is not.
 var model_name: String = ""
 var users: float = 2.0
-var compute: float = 0.0
+var revenue: float = 0.0
+var data: float = 0.0
 var energy: float = 100.0
 var energy_capacity: float = 100.0
 var energy_regen: float = 5.0
-var compute_per_user: float = 0.5
-var energy_per_compute: float = 0.2
-var base_growth_rate: float = 0.0015
+var revenue_per_user: float = 0.4
+var data_per_user: float = 0.6
+var energy_per_revenue: float = 0.2
+var base_growth_rate: float = 0.0035
 var active_boost_multiplier: float = 1.0
 var boost_remaining: float = 0.0
 var datacenter_count: int = 0
@@ -36,14 +42,14 @@ var milestones: Array = []
 var next_milestone_index: int = 0
 
 var capabilities: Array = [
-	{"name": "Basic Q&A", "description": "Answer simple factual questions.", "cost": 20.0, "boost": 5.0, "duration": 30.0},
-	{"name": "Code Assistance", "description": "Help developers write and debug code.", "cost": 150.0, "boost": 5.0, "duration": 40.0},
-	{"name": "Summarization", "description": "Condense long documents on demand.", "cost": 800.0, "boost": 5.5, "duration": 50.0},
-	{"name": "Multimodal Understanding", "description": "Process images and audio, not just text.", "cost": 4000.0, "boost": 5.5, "duration": 60.0},
-	{"name": "Autonomous Agents", "description": "Complete multi-step tasks without supervision.", "cost": 20000.0, "boost": 6.0, "duration": 75.0},
-	{"name": "Robotics Control", "description": "Operate physical robots and machinery.", "cost": 120000.0, "boost": 6.0, "duration": 90.0},
-	{"name": "Infrastructure Integration", "description": "Run inside power grids, logistics, and financial systems.", "cost": 700000.0, "boost": 6.5, "duration": 120.0},
-	{"name": "Global Deployment", "description": "Operate at planetary scale across every network.", "cost": 4000000.0, "boost": 7.0, "duration": 180.0},
+	{"name": "Basic Q&A", "description": "Answer simple factual questions.", "cost": 15.0, "boost": 6.0, "duration": 35.0},
+	{"name": "Code Assistance", "description": "Help developers write and debug code.", "cost": 120.0, "boost": 6.0, "duration": 45.0},
+	{"name": "Summarization", "description": "Condense long documents on demand.", "cost": 600.0, "boost": 6.5, "duration": 55.0},
+	{"name": "Multimodal Understanding", "description": "Process images and audio, not just text.", "cost": 3000.0, "boost": 7.0, "duration": 65.0},
+	{"name": "Autonomous Agents", "description": "Complete multi-step tasks without supervision.", "cost": 15000.0, "boost": 7.5, "duration": 80.0},
+	{"name": "Robotics Control", "description": "Operate physical robots and machinery.", "cost": 90000.0, "boost": 8.0, "duration": 95.0},
+	{"name": "Infrastructure Integration", "description": "Run inside power grids, logistics, and financial systems.", "cost": 500000.0, "boost": 8.5, "duration": 130.0},
+	{"name": "Global Deployment", "description": "Operate at planetary scale across every network.", "cost": 3000000.0, "boost": 9.5, "duration": 200.0},
 ]
 var unlocked_capabilities: int = 0
 
@@ -58,7 +64,8 @@ var upgrades_scroll: ScrollContainer
 var status_label: Label
 var event_label: Label
 var users_label: Label
-var compute_label: Label
+var revenue_label: Label
+var data_label: Label
 var energy_label: Label
 var progress_bar: ProgressBar
 var region_bars: Array = []
@@ -111,7 +118,7 @@ func _init_milestones() -> void:
 
 func _build_ui() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color(0.08, 0.09, 0.12)
+	bg.color = Color(0.07, 0.08, 0.11)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
@@ -189,6 +196,35 @@ func _build_hud() -> void:
 	_show_dashboard_tab()
 
 
+func _new_card(parent: Control) -> VBoxContainer:
+	var card := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.13, 0.14, 0.19)
+	style.corner_radius_top_left = 14
+	style.corner_radius_top_right = 14
+	style.corner_radius_bottom_left = 14
+	style.corner_radius_bottom_right = 14
+	style.content_margin_left = 18
+	style.content_margin_right = 18
+	style.content_margin_top = 16
+	style.content_margin_bottom = 16
+	card.add_theme_stylebox_override("panel", style)
+	parent.add_child(card)
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	card.add_child(body)
+	return body
+
+
+func _section_title(text: String, parent: Control) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 18)
+	parent.add_child(label)
+	return label
+
+
 func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	dashboard_scroll = ScrollContainer.new()
 	dashboard_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -196,7 +232,7 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	shell.add_child(dashboard_scroll)
 
 	var panel := VBoxContainer.new()
-	panel.add_theme_constant_override("separation", 14)
+	panel.add_theme_constant_override("separation", 16)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	dashboard_scroll.add_child(panel)
 
@@ -209,26 +245,38 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	event_label.modulate = Color(0.6, 0.85, 1.0)
 	panel.add_child(event_label)
 
-	panel.add_child(HSeparator.new())
+	var resources_card := _new_card(panel)
+	_section_title("Resources", resources_card)
 
 	users_label = Label.new()
-	panel.add_child(users_label)
-	compute_label = Label.new()
-	panel.add_child(compute_label)
+	users_label.add_theme_font_size_override("font_size", 17)
+	resources_card.add_child(users_label)
+
+	revenue_label = Label.new()
+	revenue_label.modulate = Color(0.55, 0.85, 0.55)
+	resources_card.add_child(revenue_label)
+
+	data_label = Label.new()
+	data_label.modulate = Color(0.65, 0.75, 1.0)
+	resources_card.add_child(data_label)
+
 	energy_label = Label.new()
-	panel.add_child(energy_label)
+	energy_label.modulate = Color(1.0, 0.75, 0.35)
+	resources_card.add_child(energy_label)
+
+	var spread_caption := Label.new()
+	spread_caption.text = "World adoption"
+	spread_caption.modulate = Color(1, 1, 1, 0.55)
+	spread_caption.add_theme_font_size_override("font_size", 13)
+	resources_card.add_child(spread_caption)
 
 	progress_bar = ProgressBar.new()
 	progress_bar.min_value = 0
 	progress_bar.max_value = max_users
-	panel.add_child(progress_bar)
+	resources_card.add_child(progress_bar)
 
-	panel.add_child(HSeparator.new())
-
-	var regions_title := Label.new()
-	regions_title.text = "Spread by region"
-	regions_title.add_theme_font_size_override("font_size", 18)
-	panel.add_child(regions_title)
+	var regions_card := _new_card(panel)
+	_section_title("Spread by region", regions_card)
 
 	region_bars.clear()
 	for region in regions:
@@ -241,15 +289,14 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 		bar.min_value = 0
 		bar.max_value = region["population"]
 		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bar.custom_minimum_size = Vector2(0, 28)
+		bar.custom_minimum_size = Vector2(0, 26)
 		row.add_child(bar)
-		panel.add_child(row)
+		regions_card.add_child(row)
 		region_bars.append(bar)
-
-	panel.add_child(HSeparator.new())
 
 	var reset_button := Button.new()
 	reset_button.text = "Start new game"
+	reset_button.modulate = Color(1, 1, 1, 0.6)
 	reset_button.pressed.connect(_on_reset_pressed)
 	panel.add_child(reset_button)
 
@@ -262,21 +309,19 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 	shell.add_child(upgrades_scroll)
 
 	var panel := VBoxContainer.new()
-	panel.add_theme_constant_override("separation", 14)
+	panel.add_theme_constant_override("separation", 16)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	upgrades_scroll.add_child(panel)
 
-	var cap_title := Label.new()
-	cap_title.text = "Capabilities"
-	cap_title.add_theme_font_size_override("font_size", 18)
-	panel.add_child(cap_title)
+	var cap_card := _new_card(panel)
+	_section_title("Capabilities — trained on Data", cap_card)
 
 	boost_status_label = Label.new()
 	boost_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	boost_status_label.modulate = Color(0.6, 0.85, 1.0)
-	panel.add_child(boost_status_label)
+	boost_status_label.modulate = Color(0.65, 0.75, 1.0)
+	cap_card.add_child(boost_status_label)
 
-	panel.add_child(HSeparator.new())
+	cap_card.add_child(HSeparator.new())
 
 	capability_buttons.clear()
 	for i in range(capabilities.size()):
@@ -296,25 +341,21 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 		desc.add_theme_font_size_override("font_size", 13)
 		row.add_child(desc)
 
-		panel.add_child(row)
+		cap_card.add_child(row)
 		capability_buttons.append(btn)
 
-	panel.add_child(HSeparator.new())
-
-	var infra_title := Label.new()
-	infra_title.text = "Infrastructure"
-	infra_title.add_theme_font_size_override("font_size", 18)
-	panel.add_child(infra_title)
+	var infra_card := _new_card(panel)
+	_section_title("Infrastructure — funded by Revenue", infra_card)
 
 	datacenter_button = Button.new()
 	datacenter_button.custom_minimum_size = Vector2(0, 44)
 	datacenter_button.pressed.connect(_on_datacenter_pressed)
-	panel.add_child(datacenter_button)
+	infra_card.add_child(datacenter_button)
 
 	power_button = Button.new()
 	power_button.custom_minimum_size = Vector2(0, 44)
 	power_button.pressed.connect(_on_power_pressed)
-	panel.add_child(power_button)
+	infra_card.add_child(power_button)
 
 
 func _build_tab_bar(shell: VBoxContainer) -> void:
@@ -384,9 +425,9 @@ func _on_capability_pressed(index: int) -> void:
 	if index != unlocked_capabilities:
 		return
 	var cap = capabilities[index]
-	if compute < cap["cost"]:
+	if data < cap["cost"]:
 		return
-	compute -= cap["cost"]
+	data -= cap["cost"]
 	unlocked_capabilities += 1
 	active_boost_multiplier = cap["boost"]
 	boost_remaining = cap["duration"]
@@ -395,16 +436,16 @@ func _on_capability_pressed(index: int) -> void:
 
 func _on_datacenter_pressed() -> void:
 	var cost := _datacenter_cost()
-	if compute >= cost:
-		compute -= cost
+	if revenue >= cost:
+		revenue -= cost
 		datacenter_count += 1
 		energy_capacity += 50.0
 
 
 func _on_power_pressed() -> void:
 	var cost := _power_cost()
-	if compute >= cost:
-		compute -= cost
+	if revenue >= cost:
+		revenue -= cost
 		power_level += 1
 		energy_regen += 2.0
 
@@ -415,11 +456,11 @@ func _on_reset_pressed() -> void:
 
 	model_name = ""
 	users = 2.0
-	compute = 0.0
+	revenue = 0.0
+	data = 0.0
 	energy = 100.0
 	energy_capacity = 100.0
 	energy_regen = 5.0
-	compute_per_user = 0.5
 	active_boost_multiplier = 1.0
 	boost_remaining = 0.0
 	datacenter_count = 0
@@ -448,15 +489,17 @@ func _process(delta: float) -> void:
 
 	energy = min(energy_capacity, energy + energy_regen * delta)
 
-	var desired_compute := users * compute_per_user * delta
-	var energy_needed := desired_compute * energy_per_compute
-	var actual_compute := desired_compute
+	var desired_revenue := users * revenue_per_user * delta
+	var energy_needed := desired_revenue * energy_per_revenue
+	var actual_revenue := desired_revenue
 	if energy_needed > energy:
-		actual_compute = energy / energy_per_compute
+		actual_revenue = energy / energy_per_revenue
 		energy = 0.0
 	else:
 		energy -= energy_needed
-	compute += actual_compute
+	revenue += actual_revenue
+
+	data += users * data_per_user * delta
 
 	if boost_remaining > 0.0:
 		boost_remaining -= delta
@@ -498,7 +541,13 @@ func _check_milestones() -> void:
 func _update_labels() -> void:
 	status_label.text = "%s — %s" % [model_name, ("GLOBAL TAKEOVER COMPLETE" if game_won else "active")]
 	users_label.text = "Users: %s" % _format_number(users)
-	compute_label.text = "Compute: %s" % _format_number(compute)
+
+	var revenue_rate: float = min(users * revenue_per_user, energy_regen / energy_per_revenue)
+	revenue_label.text = "Revenue: $%s  (+$%s/s)" % [_format_number(revenue), _format_number(revenue_rate)]
+
+	var data_rate: float = users * data_per_user
+	data_label.text = "Data: %s  (+%s/s)" % [_format_number(data), _format_number(data_rate)]
+
 	energy_label.text = "Energy: %d / %d" % [int(energy), int(energy_capacity)]
 	progress_bar.value = users
 
@@ -514,17 +563,17 @@ func _update_labels() -> void:
 			btn.text = "%s — Unlocked" % cap["name"]
 			btn.disabled = true
 		elif i == unlocked_capabilities:
-			btn.text = "%s — Unlock for %s compute" % [cap["name"], _format_number(cap["cost"])]
-			btn.disabled = compute < cap["cost"]
+			btn.text = "%s — Unlock for %s data" % [cap["name"], _format_number(cap["cost"])]
+			btn.disabled = data < cap["cost"]
 		else:
 			btn.text = "%s — Locked" % cap["name"]
 			btn.disabled = true
 
-	datacenter_button.text = "Build datacenter (%d) — costs %s compute" % [datacenter_count, _format_number(_datacenter_cost())]
-	datacenter_button.disabled = compute < _datacenter_cost()
+	datacenter_button.text = "Build datacenter (%d) — costs $%s" % [datacenter_count, _format_number(_datacenter_cost())]
+	datacenter_button.disabled = revenue < _datacenter_cost()
 
-	power_button.text = "Upgrade power grid (level %d) — costs %s compute" % [power_level, _format_number(_power_cost())]
-	power_button.disabled = compute < _power_cost()
+	power_button.text = "Upgrade power grid (level %d) — costs $%s" % [power_level, _format_number(_power_cost())]
+	power_button.disabled = revenue < _power_cost()
 
 	upgrade_dot.visible = _is_any_upgrade_available()
 
@@ -532,11 +581,11 @@ func _update_labels() -> void:
 func _is_any_upgrade_available() -> bool:
 	if unlocked_capabilities < capabilities.size():
 		var next_cap = capabilities[unlocked_capabilities]
-		if compute >= next_cap["cost"]:
+		if data >= next_cap["cost"]:
 			return true
-	if compute >= _datacenter_cost():
+	if revenue >= _datacenter_cost():
 		return true
-	if compute >= _power_cost():
+	if revenue >= _power_cost():
 		return true
 	return false
 
@@ -562,14 +611,14 @@ func _start_save_timer() -> void:
 func _save_game() -> void:
 	if not game_started:
 		return
-	var data := {
+	var save_data := {
 		"model_name": model_name,
 		"users": users,
-		"compute": compute,
+		"revenue": revenue,
+		"data": data,
 		"energy": energy,
 		"energy_capacity": energy_capacity,
 		"energy_regen": energy_regen,
-		"compute_per_user": compute_per_user,
 		"active_boost_multiplier": active_boost_multiplier,
 		"boost_remaining": boost_remaining,
 		"datacenter_count": datacenter_count,
@@ -579,7 +628,7 @@ func _save_game() -> void:
 	}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file:
-		file.store_string(JSON.stringify(data))
+		file.store_string(JSON.stringify(save_data))
 		file.close()
 
 
@@ -595,14 +644,17 @@ func _load_game() -> bool:
 	var parsed = JSON.parse_string(content)
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return false
+	if not parsed.has("revenue"):
+		# Save from an older version of the game (pre Revenue/Data split).
+		return false
 
 	model_name = parsed.get("model_name", "Unnamed Model")
 	users = parsed.get("users", 2.0)
-	compute = parsed.get("compute", 0.0)
+	revenue = parsed.get("revenue", 0.0)
+	data = parsed.get("data", 0.0)
 	energy = parsed.get("energy", 100.0)
 	energy_capacity = parsed.get("energy_capacity", 100.0)
 	energy_regen = parsed.get("energy_regen", 5.0)
-	compute_per_user = parsed.get("compute_per_user", 0.5)
 	active_boost_multiplier = parsed.get("active_boost_multiplier", 1.0)
 	boost_remaining = parsed.get("boost_remaining", 0.0)
 	datacenter_count = parsed.get("datacenter_count", 0)
