@@ -1,62 +1,64 @@
 # CousinGame
 
-**Concept:** Je lanceert je eigen taalmodel. Gebruikers stellen het vragen en leveren daarmee rekenkracht op; met rekenkracht train je het model (sneller/slimmer → meer groei) en bouw je datacenters/energie uit. Energie is de bottleneck. Doel: wereldwijde verspreiding voltooien. Idle/strategy-spel, een beetje Universal Paperclips × Plague Inc., met een AI-thema.
+**Concept:** You launch your own language model. Users ask it questions and generate compute in return; you spend compute to unlock capabilities (temporary growth boosts) and to build out datacenters/energy. Energy is the bottleneck. Goal: complete global spread. Idle/strategy game, a bit of Universal Paperclips × Plague Inc., with an AI theme.
 
-Gebouwd met [Godot 4](https://godotengine.org/) (GDScript, portrait, UI-based).
+Built with [Godot 4](https://godotengine.org/) (GDScript, portrait, UI-based, all code and content in English).
 
-## Setup (eenmalig, voor beide van jullie)
+## Setup (one-time, for both of you)
 
-1. **Godot installeren**
-   - Download Godot 4 (stable, .NET-versie niet nodig) van https://godotengine.org/download/windows/
-   - Kies de "Standard" versie (64-bit .zip), uitpakken, `Godot_v4.x-stable_win64.exe` starten. Geen installatie nodig.
+1. **Install Godot**
+   - Download Godot 4 (stable, .NET version not needed) from https://godotengine.org/download/windows/
+   - Pick the "Standard" version (64-bit .zip), unzip, run `Godot_v4.x-stable_win64.exe`. No installer needed.
 
-2. **Repo clonen**
+2. **Clone the repo**
    ```bash
-   git clone <GITHUB-REPO-URL>
+   git clone https://github.com/dantenachtegaele2017-arch/ronaroom.git
    ```
 
-3. **Project openen**
-   - Godot starten → "Import" → wijs naar `project.godot` in deze map.
+3. **Open the project**
+   - Start Godot → "Import" → point it at `project.godot` in this folder.
 
-## Samenwerken via Git
+## Collaborating via Git
 
-- Werk niet allebei tegelijk in dezelfde scene (`.tscn`) — die bestanden zijn tekstueel maar merge-conflicten zijn lastig op te lossen. Spreek af wie aan welke scene/script werkt, of werk in aparte branches per feature.
-- Commit vaak, kleine stapjes:
+- Don't both work in the same scene (`.tscn`) file at the same time — those files are text but merge conflicts are painful to resolve. Agree on who works on which scene/script, or use feature branches.
+- Commit often, in small steps:
   ```bash
   git add .
-  git commit -m "korte beschrijving"
+  git commit -m "short description"
   git push
   ```
-- Haal wijzigingen van de ander op voor je begint:
+- Pull the other person's changes before you start:
   ```bash
   git pull
   ```
-- `.godot/` en importbestanden staan in `.gitignore` — die hoeven niet gedeeld te worden, Godot genereert ze lokaal opnieuw.
+- `.godot/` and import files are in `.gitignore` — no need to share those, Godot regenerates them locally.
 
-## Projectstructuur
+## Project structure
 
 ```
-scenes/     # .tscn scene-bestanden (levels, UI, personages)
+scenes/     # .tscn scene files (levels, UI, characters)
 scripts/    # .gd scripts
 assets/
-  sprites/  # afbeeldingen
-  audio/    # geluid/muziek
+  sprites/  # images
+  audio/    # sound/music
 ```
 
-## Huidige status (v2)
+## Current status (v3)
 
-- [x] Concept bepaald
-- [x] Kernloop: naam kiezen → users genereren rekenkracht → upgrades → energie als bottleneck
-- [x] Verspreiding per regio (8 regio's die na elkaar "vollopen", i.p.v. één kale balk)
-- [x] Verhaalmomenten die vrijkomen bij gebruikersaantallen (bedrijven, media, overheden, robots, wereldovername)
-- [x] Automatisch opslaan (elke 5s naar `user://savegame.json`) + "Nieuw spel beginnen"-knop
-- [ ] Echte geografische wereldkaart i.p.v. regio-balken
-- [ ] Balans tunen (groeisnelheid, kosten, energieverbruik) — huidige cijfers zijn een eerste gok
-- [ ] Geluid/muziek + visuele polish (iconen, kleuren per regio)
-- [ ] Testen op een echt Android-toestel (Godot → Export → Android)
+- [x] Concept defined
+- [x] Core loop: name your model → users generate compute → capabilities boost growth → energy as bottleneck
+- [x] Regional spread grounded in approximate real internet-user counts per region (~5.4B total), regions fill up one after another
+- [x] Story milestones that unlock at user-count thresholds (businesses, media, governments, robots, global takeover)
+- [x] Capabilities system: unlock a capability → temporary strong growth boost that decays back to a slow baseline, forcing a deliberate "buildup" rhythm instead of smooth exponential growth
+- [x] Tabbed UI: Dashboard (status/resources/regions) and Upgrades (capabilities + infrastructure), with a red notification dot on the Upgrades tab when something is affordable
+- [x] Autosave (every 5s to `user://savegame.json`) + "Start new game" button
+- [ ] Real geographic world map instead of region bars
+- [ ] Balance tuning (growth rate, capability costs, energy consumption) — current numbers are a first pass, needs playtesting
+- [ ] Sound/music + visual polish (icons, per-region colors, capability icons)
+- [ ] Test on a real Android device (Godot → Export → Android)
 
-Savegame-locatie op Windows: `%APPDATA%\Godot\app_userdata\CousinGame\savegame.json`. Verwijder dat bestand (of gebruik de "Nieuw spel beginnen"-knop in het spel) om opnieuw te beginnen.
+Savegame location on Windows: `%APPDATA%\Godot\app_userdata\CousinGame\savegame.json`. Delete that file (or use the "Start new game" button in-game) to reset.
 
-## Spellogica
+## Game logic
 
-Alles zit in `scripts/Main.gd` (UI wordt in code opgebouwd, geen losse `.tscn`-knooppunten om merge-conflicten te vermijden). Belangrijkste variabelen bovenaan het script: groeisnelheid, kosten van upgrades, energieverbruik. Pas die aan om de balans te testen.
+Everything lives in `scripts/Main.gd` (UI is built in code, no separate `.tscn` nodes, to avoid merge conflicts). Key tunable data sits near the top of the script: `REGION_DATA` (population per region), `capabilities` (cost/boost/duration per capability), `base_growth_rate`, and the datacenter/power-grid cost curves. Adjust those to test balance.
