@@ -2,22 +2,35 @@ extends Control
 
 const SAVE_PATH := "user://savegame.json"
 
-# Approximate internet users by region (order of magnitude, not live data).
-const REGION_DATA := [
-	{"name": "Asia", "users": 2900000000.0},
-	{"name": "Africa", "users": 600000000.0},
-	{"name": "Europe", "users": 750000000.0},
-	{"name": "Latin America & Caribbean", "users": 530000000.0},
-	{"name": "North America", "users": 350000000.0},
-	{"name": "Middle East", "users": 220000000.0},
-	{"name": "Oceania", "users": 30000000.0},
+# Population segments, roughly grounded in real-world figures (order of
+# magnitude, not precise) rather than an even split:
+# - Developers: ~28-47M professional software developers worldwide (various
+#   industry surveys put estimates in that range; we use ~30M).
+# - Knowledge workers: ~1B+ knowledge-worker jobs globally (~1/3 of the
+#   global workforce).
+# - Students: rough figure for globally connected students/researchers.
+# - The remaining buckets (enthusiasts, businesses, governments, everyday
+#   consumers, skeptics) are rough narrative estimates, not sourced stats.
+# Segments are listed in the order they realistically start adopting new AI
+# tools (early/technical audiences first, skeptics last), and sum to the
+# same ~5.38B total online population used before.
+const SEGMENT_DATA := [
+	{"name": "AI Enthusiasts", "users": 150000000.0},
+	{"name": "Developers", "users": 30000000.0},
+	{"name": "Students", "users": 250000000.0},
+	{"name": "Knowledge Workers", "users": 1000000000.0},
+	{"name": "Businesses", "users": 300000000.0},
+	{"name": "Everyday Consumers", "users": 2600000000.0},
+	{"name": "Governments", "users": 300000000.0},
+	{"name": "Skeptics", "users": 750000000.0},
 ]
 
 # --- Game state ---
 # Users give two distinct things: Revenue (they pay to use the model, funds
 # infrastructure) and Data (their interactions are training signal, funds
 # new capabilities). Revenue is energy-limited (serving queries at scale
-# costs power); Data collection is not.
+# costs power); Data collection is not. Capabilities are permanent — once
+# trained into the model, they stay; they don't fade like a temporary buff.
 var model_name: String = ""
 var users: float = 2.0
 var revenue: float = 0.0
@@ -28,28 +41,27 @@ var energy_regen: float = 5.0
 var revenue_per_user: float = 0.4
 var data_per_user: float = 0.6
 var energy_per_revenue: float = 0.2
-var base_growth_rate: float = 0.0035
-var active_boost_multiplier: float = 1.0
-var boost_remaining: float = 0.0
+var base_growth_rate: float = 0.006
+var permanent_growth_multiplier: float = 1.0
 var datacenter_count: int = 0
 var power_level: int = 0
 var max_users: float = 0.0
 var game_started: bool = false
 var game_won: bool = false
 
-var regions: Array = []
+var segments: Array = []
 var milestones: Array = []
 var next_milestone_index: int = 0
 
 var capabilities: Array = [
-	{"name": "Basic Q&A", "description": "Answer simple factual questions.", "cost": 15.0, "boost": 6.0, "duration": 35.0},
-	{"name": "Code Assistance", "description": "Help developers write and debug code.", "cost": 120.0, "boost": 6.0, "duration": 45.0},
-	{"name": "Summarization", "description": "Condense long documents on demand.", "cost": 600.0, "boost": 6.5, "duration": 55.0},
-	{"name": "Multimodal Understanding", "description": "Process images and audio, not just text.", "cost": 3000.0, "boost": 7.0, "duration": 65.0},
-	{"name": "Autonomous Agents", "description": "Complete multi-step tasks without supervision.", "cost": 15000.0, "boost": 7.5, "duration": 80.0},
-	{"name": "Robotics Control", "description": "Operate physical robots and machinery.", "cost": 90000.0, "boost": 8.0, "duration": 95.0},
-	{"name": "Infrastructure Integration", "description": "Run inside power grids, logistics, and financial systems.", "cost": 500000.0, "boost": 8.5, "duration": 130.0},
-	{"name": "Global Deployment", "description": "Operate at planetary scale across every network.", "cost": 3000000.0, "boost": 9.5, "duration": 200.0},
+	{"name": "Basic Q&A", "description": "Answer simple factual questions.", "cost": 15.0, "multiplier": 1.3},
+	{"name": "Code Assistance", "description": "Help developers write and debug code.", "cost": 120.0, "multiplier": 1.3},
+	{"name": "Summarization", "description": "Condense long documents on demand.", "cost": 600.0, "multiplier": 1.4},
+	{"name": "Multimodal Understanding", "description": "Process images and audio, not just text.", "cost": 3000.0, "multiplier": 1.4},
+	{"name": "Autonomous Agents", "description": "Complete multi-step tasks without supervision.", "cost": 15000.0, "multiplier": 1.5},
+	{"name": "Robotics Control", "description": "Operate physical robots and machinery.", "cost": 90000.0, "multiplier": 1.6},
+	{"name": "Infrastructure Integration", "description": "Run inside power grids, logistics, and financial systems.", "cost": 500000.0, "multiplier": 1.7},
+	{"name": "Global Deployment", "description": "Operate at planetary scale across every network.", "cost": 3000000.0, "multiplier": 1.8},
 ]
 var unlocked_capabilities: int = 0
 
@@ -67,17 +79,19 @@ var users_label: Label
 var revenue_label: Label
 var data_label: Label
 var energy_label: Label
+var strength_label_dashboard: Label
 var progress_bar: ProgressBar
-var region_bars: Array = []
-var boost_status_label: Label
+var segment_bars: Array = []
+var strength_label_upgrades: Label
 var capability_buttons: Array = []
 var datacenter_button: Button
 var power_button: Button
 var upgrade_dot: Control
+var notifications_container: VBoxContainer
 
 
 func _ready() -> void:
-	_init_regions()
+	_init_segments()
 	_init_milestones()
 	_build_ui()
 
@@ -85,7 +99,8 @@ func _ready() -> void:
 		game_started = true
 		name_overlay.visible = false
 		hud_root.visible = true
-		_distribute_regions()
+		_recompute_growth_multiplier()
+		_distribute_segments(false)
 		_check_milestones()
 		_update_labels()
 	else:
@@ -95,11 +110,11 @@ func _ready() -> void:
 	_start_save_timer()
 
 
-func _init_regions() -> void:
-	regions.clear()
+func _init_segments() -> void:
+	segments.clear()
 	var total := 0.0
-	for d in REGION_DATA:
-		regions.append({"name": d["name"], "population": d["users"], "current": 0.0})
+	for d in SEGMENT_DATA:
+		segments.append({"name": d["name"], "population": d["users"], "current": 0.0, "notified": false})
 		total += d["users"]
 	max_users = total
 
@@ -124,6 +139,7 @@ func _build_ui() -> void:
 
 	_build_name_overlay()
 	_build_hud()
+	_build_notifications_layer()
 
 
 func _build_name_overlay() -> void:
@@ -264,6 +280,10 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	energy_label.modulate = Color(1.0, 0.75, 0.35)
 	resources_card.add_child(energy_label)
 
+	strength_label_dashboard = Label.new()
+	strength_label_dashboard.modulate = Color(0.9, 0.7, 1.0)
+	resources_card.add_child(strength_label_dashboard)
+
 	var spread_caption := Label.new()
 	spread_caption.text = "World adoption"
 	spread_caption.modulate = Color(1, 1, 1, 0.55)
@@ -275,24 +295,25 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	progress_bar.max_value = max_users
 	resources_card.add_child(progress_bar)
 
-	var regions_card := _new_card(panel)
-	_section_title("Spread by region", regions_card)
+	var segments_card := _new_card(panel)
+	_section_title("Adoption by segment", segments_card)
 
-	region_bars.clear()
-	for region in regions:
+	segment_bars.clear()
+	for segment in segments:
 		var row := HBoxContainer.new()
-		var rname := Label.new()
-		rname.text = region["name"]
-		rname.custom_minimum_size = Vector2(190, 0)
-		row.add_child(rname)
+		var sname := Label.new()
+		sname.text = segment["name"]
+		sname.custom_minimum_size = Vector2(170, 0)
+		sname.autowrap_mode = TextServer.AUTOWRAP_WORD
+		row.add_child(sname)
 		var bar := ProgressBar.new()
 		bar.min_value = 0
-		bar.max_value = region["population"]
+		bar.max_value = segment["population"]
 		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bar.custom_minimum_size = Vector2(0, 26)
 		row.add_child(bar)
-		regions_card.add_child(row)
-		region_bars.append(bar)
+		segments_card.add_child(row)
+		segment_bars.append(bar)
 
 	var reset_button := Button.new()
 	reset_button.text = "Start new game"
@@ -314,12 +335,12 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 	upgrades_scroll.add_child(panel)
 
 	var cap_card := _new_card(panel)
-	_section_title("Capabilities — trained on Data", cap_card)
+	_section_title("Capabilities — permanent, trained on Data", cap_card)
 
-	boost_status_label = Label.new()
-	boost_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	boost_status_label.modulate = Color(0.65, 0.75, 1.0)
-	cap_card.add_child(boost_status_label)
+	strength_label_upgrades = Label.new()
+	strength_label_upgrades.autowrap_mode = TextServer.AUTOWRAP_WORD
+	strength_label_upgrades.modulate = Color(0.9, 0.7, 1.0)
+	cap_card.add_child(strength_label_upgrades)
 
 	cap_card.add_child(HSeparator.new())
 
@@ -403,6 +424,60 @@ func _build_tab_bar(shell: VBoxContainer) -> void:
 	upgrades_tab_button.add_child(upgrade_dot)
 
 
+func _build_notifications_layer() -> void:
+	notifications_container = VBoxContainer.new()
+	notifications_container.anchor_left = 1.0
+	notifications_container.anchor_right = 1.0
+	notifications_container.anchor_top = 0.0
+	notifications_container.anchor_bottom = 0.0
+	notifications_container.offset_left = -360.0
+	notifications_container.offset_right = -16.0
+	notifications_container.offset_top = 16.0
+	notifications_container.offset_bottom = 600.0
+	notifications_container.add_theme_constant_override("separation", 8)
+	add_child(notifications_container)
+
+
+func _show_notification(text: String) -> void:
+	var card := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.16, 0.19, 0.27)
+	style.corner_radius_top_left = 10
+	style.corner_radius_top_right = 10
+	style.corner_radius_bottom_left = 10
+	style.corner_radius_bottom_right = 10
+	style.content_margin_left = 14
+	style.content_margin_right = 10
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	card.add_theme_stylebox_override("panel", style)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	card.add_child(row)
+
+	var label := Label.new()
+	label.text = "📰 " + text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	label.custom_minimum_size = Vector2(260, 0)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+
+	var close_button := Button.new()
+	close_button.text = "×"
+	close_button.custom_minimum_size = Vector2(28, 28)
+	close_button.pressed.connect(func(): card.queue_free())
+	row.add_child(close_button)
+
+	notifications_container.add_child(card)
+
+	var timer := get_tree().create_timer(8.0)
+	timer.timeout.connect(func():
+		if is_instance_valid(card):
+			card.queue_free()
+	)
+
+
 func _show_dashboard_tab() -> void:
 	dashboard_scroll.visible = true
 	upgrades_scroll.visible = false
@@ -421,6 +496,12 @@ func _power_cost() -> float:
 	return 15.0 * pow(1.6, power_level)
 
 
+func _recompute_growth_multiplier() -> void:
+	permanent_growth_multiplier = 1.0
+	for i in range(unlocked_capabilities):
+		permanent_growth_multiplier *= capabilities[i]["multiplier"]
+
+
 func _on_capability_pressed(index: int) -> void:
 	if index != unlocked_capabilities:
 		return
@@ -429,8 +510,7 @@ func _on_capability_pressed(index: int) -> void:
 		return
 	data -= cap["cost"]
 	unlocked_capabilities += 1
-	active_boost_multiplier = cap["boost"]
-	boost_remaining = cap["duration"]
+	permanent_growth_multiplier *= cap["multiplier"]
 	_save_game()
 
 
@@ -461,8 +541,7 @@ func _on_reset_pressed() -> void:
 	energy = 100.0
 	energy_capacity = 100.0
 	energy_regen = 5.0
-	active_boost_multiplier = 1.0
-	boost_remaining = 0.0
+	permanent_growth_multiplier = 1.0
 	datacenter_count = 0
 	power_level = 0
 	unlocked_capabilities = 0
@@ -470,11 +549,14 @@ func _on_reset_pressed() -> void:
 	next_milestone_index = 0
 	game_started = false
 
-	_init_regions()
+	_init_segments()
 	_init_milestones()
-	for i in range(regions.size()):
-		region_bars[i].max_value = regions[i]["population"]
-		region_bars[i].value = 0
+	for i in range(segments.size()):
+		segment_bars[i].max_value = segments[i]["population"]
+		segment_bars[i].value = 0
+
+	for child in notifications_container.get_children():
+		child.queue_free()
 
 	event_label.text = ""
 	name_edit.text = ""
@@ -501,32 +583,33 @@ func _process(delta: float) -> void:
 
 	data += users * data_per_user * delta
 
-	if boost_remaining > 0.0:
-		boost_remaining -= delta
-		if boost_remaining <= 0.0:
-			boost_remaining = 0.0
-			active_boost_multiplier = 1.0
-
-	var effective_growth_rate := base_growth_rate * active_boost_multiplier
+	var effective_growth_rate := base_growth_rate * permanent_growth_multiplier
 	users = min(max_users, users * (1.0 + effective_growth_rate * delta))
 
 	if users >= max_users:
 		game_won = true
 		_save_game()
 
-	_distribute_regions()
+	_distribute_segments(true)
 	_check_milestones()
 	_update_labels()
 
 
-func _distribute_regions() -> void:
+func _distribute_segments(notify: bool) -> void:
 	var remaining := users
-	for i in range(regions.size()):
-		var region = regions[i]
-		var capacity: float = region["population"]
+	for i in range(segments.size()):
+		var segment = segments[i]
+		var capacity: float = segment["population"]
 		var filled: float = min(remaining, capacity)
-		region["current"] = filled
-		region_bars[i].value = filled
+		var was_empty: bool = segment["current"] <= 0.0
+		segment["current"] = filled
+		segment_bars[i].value = filled
+
+		if filled > 0.0 and not segment["notified"]:
+			segment["notified"] = true
+			if notify and was_empty:
+				_show_notification("%s are becoming fans of %s." % [segment["name"], model_name])
+
 		remaining -= filled
 		if remaining < 0.0:
 			remaining = 0.0
@@ -551,19 +634,25 @@ func _update_labels() -> void:
 	energy_label.text = "Energy: %d / %d" % [int(energy), int(energy_capacity)]
 	progress_bar.value = users
 
-	if boost_remaining > 0.0:
-		boost_status_label.text = "Active boost: user growth ×%.1f for %ds" % [active_boost_multiplier, int(ceil(boost_remaining))]
+	var strength_short := "Model strength: ×%.2f growth" % permanent_growth_multiplier
+	strength_label_dashboard.text = strength_short
+
+	var strength_long := strength_short
+	if unlocked_capabilities < capabilities.size():
+		var next_cap = capabilities[unlocked_capabilities]
+		strength_long += "  —  next capability adds ×%.1f, permanently." % next_cap["multiplier"]
 	else:
-		boost_status_label.text = "No active boost — growth is slow. Unlock the next capability to accelerate it."
+		strength_long += "  —  all capabilities unlocked."
+	strength_label_upgrades.text = strength_long
 
 	for i in range(capabilities.size()):
 		var cap = capabilities[i]
 		var btn: Button = capability_buttons[i]
 		if i < unlocked_capabilities:
-			btn.text = "%s — Unlocked" % cap["name"]
+			btn.text = "%s — Unlocked (×%.1f)" % [cap["name"], cap["multiplier"]]
 			btn.disabled = true
 		elif i == unlocked_capabilities:
-			btn.text = "%s — Unlock for %s data" % [cap["name"], _format_number(cap["cost"])]
+			btn.text = "%s — Unlock for %s data (×%.1f growth, permanent)" % [cap["name"], _format_number(cap["cost"]), cap["multiplier"]]
 			btn.disabled = data < cap["cost"]
 		else:
 			btn.text = "%s — Locked" % cap["name"]
@@ -619,8 +708,6 @@ func _save_game() -> void:
 		"energy": energy,
 		"energy_capacity": energy_capacity,
 		"energy_regen": energy_regen,
-		"active_boost_multiplier": active_boost_multiplier,
-		"boost_remaining": boost_remaining,
 		"datacenter_count": datacenter_count,
 		"power_level": power_level,
 		"unlocked_capabilities": unlocked_capabilities,
@@ -655,8 +742,6 @@ func _load_game() -> bool:
 	energy = parsed.get("energy", 100.0)
 	energy_capacity = parsed.get("energy_capacity", 100.0)
 	energy_regen = parsed.get("energy_regen", 5.0)
-	active_boost_multiplier = parsed.get("active_boost_multiplier", 1.0)
-	boost_remaining = parsed.get("boost_remaining", 0.0)
 	datacenter_count = parsed.get("datacenter_count", 0)
 	power_level = parsed.get("power_level", 0)
 	unlocked_capabilities = parsed.get("unlocked_capabilities", 0)
