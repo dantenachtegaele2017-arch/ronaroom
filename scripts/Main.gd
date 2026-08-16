@@ -20,6 +20,13 @@ const BASE_ENERGY_CAPACITY := 20.0
 
 const MAX_GROWTH_DOTS := 60
 
+# Training a capability into the model isn't instant: it costs Data upfront
+# (the "tuition"), then draws Energy over time to actually run the training
+# — competing with Revenue-serving for the same energy pool. This rate caps
+# how fast training can ever go, even with abundant spare energy, so there's
+# always a real minimum duration, not just an instant unlock.
+const MAX_TRAINING_ENERGY_RATE := 1.0
+
 # Population segments, roughly grounded in real-world figures (order of
 # magnitude, not precise) rather than an even split:
 # - Developers: ~28-47M professional software developers worldwide (various
@@ -95,17 +102,22 @@ var segments: Array = []
 var milestones: Array = []
 var next_milestone_index: int = 0
 
+# "energy" is the total training energy required to complete — at the
+# MAX_TRAINING_ENERGY_RATE cap above, that's also its minimum duration in
+# days (which, at 1 real second per day, is also its minimum real time).
 var capabilities: Array = [
-	{"name": "Basic Q&A", "description": "Answer simple factual questions.", "cost": 15.0, "multiplier": 1.3},
-	{"name": "Code Assistance", "description": "Help developers write and debug code.", "cost": 120.0, "multiplier": 1.3},
-	{"name": "Summarization", "description": "Condense long documents on demand.", "cost": 600.0, "multiplier": 1.4},
-	{"name": "Multimodal Understanding", "description": "Process images and audio, not just text.", "cost": 3000.0, "multiplier": 1.4},
-	{"name": "Autonomous Agents", "description": "Complete multi-step tasks without supervision.", "cost": 15000.0, "multiplier": 1.5},
-	{"name": "Robotics Control", "description": "Operate physical robots and machinery.", "cost": 90000.0, "multiplier": 1.6},
-	{"name": "Infrastructure Integration", "description": "Run inside power grids, logistics, and financial systems.", "cost": 500000.0, "multiplier": 1.7},
-	{"name": "Global Deployment", "description": "Operate at planetary scale across every network.", "cost": 3000000.0, "multiplier": 1.8},
+	{"name": "Basic Q&A", "description": "Answer simple factual questions.", "cost": 15.0, "energy": 30.0, "multiplier": 1.3},
+	{"name": "Code Assistance", "description": "Help developers write and debug code.", "cost": 120.0, "energy": 90.0, "multiplier": 1.3},
+	{"name": "Summarization", "description": "Condense long documents on demand.", "cost": 600.0, "energy": 180.0, "multiplier": 1.4},
+	{"name": "Multimodal Understanding", "description": "Process images and audio, not just text.", "cost": 3000.0, "energy": 300.0, "multiplier": 1.4},
+	{"name": "Autonomous Agents", "description": "Complete multi-step tasks without supervision.", "cost": 15000.0, "energy": 600.0, "multiplier": 1.5},
+	{"name": "Robotics Control", "description": "Operate physical robots and machinery.", "cost": 90000.0, "energy": 1200.0, "multiplier": 1.6},
+	{"name": "Infrastructure Integration", "description": "Run inside power grids, logistics, and financial systems.", "cost": 500000.0, "energy": 2400.0, "multiplier": 1.7},
+	{"name": "Global Deployment", "description": "Operate at planetary scale across every network.", "cost": 3000000.0, "energy": 4800.0, "multiplier": 1.8},
 ]
 var unlocked_capabilities: int = 0
+var training_index: int = -1
+var training_energy_invested: float = 0.0
 
 var next_dot_threshold: float = 0.0
 var dots_spawned: int = 0
@@ -340,7 +352,7 @@ func _build_globe_card(panel: VBoxContainer) -> void:
 	sphere_mesh.height = 2.0
 	sphere.mesh = sphere_mesh
 	var sphere_mat := StandardMaterial3D.new()
-	sphere_mat.albedo_texture = _generate_globe_texture()
+	sphere_mat.albedo_texture = load("res://assets/sprites/world_map.jpg")
 	sphere_mat.metallic = 0.15
 	sphere_mat.roughness = 0.55
 	sphere_mat.rim_enabled = true
@@ -353,41 +365,6 @@ func _build_globe_card(panel: VBoxContainer) -> void:
 
 	globe_dots_root = Node3D.new()
 	globe_pivot.add_child(globe_dots_root)
-
-
-func _generate_globe_texture() -> ImageTexture:
-	# Procedurally painted continents (stylized approximations, not accurate
-	# coastlines — we have no map asset to draw from) on an equirectangular
-	# image, so the sphere reads as "a globe" rather than a flat colored ball.
-	var width := 480
-	var height := 240
-	var ocean := Color(0.04, 0.14, 0.32)
-	var land := Color(0.14, 0.32, 0.18)
-	var blobs := [
-		{"lat": 15.0, "lon": 15.0, "r_lat": 38.0, "r_lon": 22.0},   # Africa
-		{"lat": 50.0, "lon": 15.0, "r_lat": 18.0, "r_lon": 25.0},   # Europe
-		{"lat": 45.0, "lon": 90.0, "r_lat": 28.0, "r_lon": 48.0},   # Asia
-		{"lat": 8.0, "lon": 105.0, "r_lat": 15.0, "r_lon": 15.0},   # SE Asia
-		{"lat": 48.0, "lon": -100.0, "r_lat": 22.0, "r_lon": 28.0}, # North America
-		{"lat": -15.0, "lon": -60.0, "r_lat": 25.0, "r_lon": 18.0}, # South America
-		{"lat": -25.0, "lon": 135.0, "r_lat": 13.0, "r_lon": 17.0}, # Australia
-	]
-
-	var image := Image.create(width, height, false, Image.FORMAT_RGBA8)
-	for y in range(height):
-		var lat: float = 90.0 - (float(y) / float(height)) * 180.0
-		for x in range(width):
-			var lon: float = (float(x) / float(width)) * 360.0 - 180.0
-			var land_factor := 0.0
-			for blob in blobs:
-				var dx: float = (lon - blob["lon"]) / blob["r_lon"]
-				var dy: float = (lat - blob["lat"]) / blob["r_lat"]
-				var dist: float = sqrt(dx * dx + dy * dy)
-				var factor: float = clamp((1.0 - dist) * 3.0, 0.0, 1.0)
-				land_factor = max(land_factor, factor)
-			image.set_pixel(x, y, ocean.lerp(land, land_factor))
-
-	return ImageTexture.create_from_image(image)
 
 
 func _lat_lon_to_vec3(lat_deg: float, lon_deg: float, r: float) -> Vector3:
@@ -587,7 +564,7 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(0, 48)
-		btn.pressed.connect(_on_capability_pressed.bind(i))
+		btn.pressed.connect(_on_start_training.bind(i))
 		row.add_child(btn)
 
 		var desc := Label.new()
@@ -795,15 +772,17 @@ func _recompute_growth_multiplier() -> void:
 		permanent_growth_multiplier *= capabilities[i]["multiplier"]
 
 
-func _on_capability_pressed(index: int) -> void:
+func _on_start_training(index: int) -> void:
 	if index != unlocked_capabilities:
+		return
+	if training_index != -1:
 		return
 	var cap = capabilities[index]
 	if data < cap["cost"]:
 		return
 	data -= cap["cost"]
-	unlocked_capabilities += 1
-	permanent_growth_multiplier *= cap["multiplier"]
+	training_index = index
+	training_energy_invested = 0.0
 	_save_game()
 
 
@@ -836,6 +815,8 @@ func _on_reset_pressed() -> void:
 	energy = BASE_ENERGY_CAPACITY
 	permanent_growth_multiplier = 1.0
 	unlocked_capabilities = 0
+	training_index = -1
+	training_energy_invested = 0.0
 	game_won = false
 	next_milestone_index = 0
 	game_started = false
@@ -880,16 +861,43 @@ func _process(delta: float) -> void:
 	var cap_energy := _energy_capacity()
 	energy = min(cap_energy, energy + _energy_regen() * delta)
 
+	# Revenue-serving and Training both draw from the same energy pool each
+	# tick. If demand exceeds what's available, both get throttled
+	# proportionally to their share of the demand — neither one starves the
+	# other outright, but both slow down together under energy pressure.
 	var capacity_limited_rate: float = min(users * revenue_per_user, _serving_capacity())
 	var desired_revenue := capacity_limited_rate * delta
-	var energy_needed := desired_revenue * energy_per_revenue
+	var revenue_energy_wanted := desired_revenue * energy_per_revenue
+
+	var training_energy_wanted := 0.0
+	if training_index != -1:
+		training_energy_wanted = MAX_TRAINING_ENERGY_RATE * delta
+
+	var total_energy_wanted := revenue_energy_wanted + training_energy_wanted
 	var actual_revenue := desired_revenue
-	if energy_needed > energy:
-		actual_revenue = energy / energy_per_revenue
+	var training_energy_this_tick := training_energy_wanted
+	if total_energy_wanted > energy:
+		var scale: float = (energy / total_energy_wanted) if total_energy_wanted > 0.0 else 0.0
+		actual_revenue = desired_revenue * scale
+		training_energy_this_tick = training_energy_wanted * scale
 		energy = 0.0
 	else:
-		energy -= energy_needed
+		energy -= total_energy_wanted
 	revenue += actual_revenue
+
+	if training_index != -1:
+		training_energy_invested += training_energy_this_tick
+		var training_cap = capabilities[training_index]
+		if training_energy_invested >= training_cap["energy"]:
+			unlocked_capabilities += 1
+			permanent_growth_multiplier *= training_cap["multiplier"]
+			_show_notification(
+				"Training complete: %s is now live." % training_cap["name"],
+				"%s has finished training on %s. It can now %s" % [training_cap["name"], model_name, training_cap["description"].to_lower()]
+			)
+			training_index = -1
+			training_energy_invested = 0.0
+			_save_game()
 
 	data += users * data_per_user * delta
 
@@ -944,14 +952,29 @@ func _update_labels() -> void:
 	status_label.text = "%s — %s" % [model_name, ("GLOBAL TAKEOVER COMPLETE" if game_won else "active")]
 	users_label.text = "Users: %s" % _format_number(floor(users))
 
-	var sustainable_rate: float = _energy_regen() / energy_per_revenue
-	var revenue_rate: float = min(users * revenue_per_user, _serving_capacity(), sustainable_rate)
+	# Steady-state estimate of how Revenue-serving and Training would split
+	# the available energy regen if both want as much as they can use —
+	# mirrors the actual per-tick throttling logic in _process for display.
+	var desired_revenue_rate: float = min(users * revenue_per_user, _serving_capacity())
+	var revenue_energy_want: float = desired_revenue_rate * energy_per_revenue
+	var training_energy_want: float = MAX_TRAINING_ENERGY_RATE if training_index != -1 else 0.0
+	var total_energy_want: float = revenue_energy_want + training_energy_want
+	var regen: float = _energy_regen()
+	var revenue_rate: float = desired_revenue_rate
+	var training_rate: float = training_energy_want
+	if total_energy_want > regen:
+		var display_scale: float = (regen / total_energy_want) if total_energy_want > 0.0 else 0.0
+		revenue_rate = desired_revenue_rate * display_scale
+		training_rate = training_energy_want * display_scale
+
 	revenue_label.text = "Revenue: $%s  (+$%s/day)" % [_format_number(revenue), _format_number(revenue_rate)]
 
 	var data_rate: float = users * data_per_user
 	data_label.text = "Data: %s  (+%s/day)" % [_format_number(data), _format_number(data_rate)]
 
-	energy_label.text = "Energy: %d / %d" % [int(energy), int(_energy_capacity())]
+	energy_label.text = "Energy: %d / %d  (using %s/day serving, %s/day training, of %s/day available)" % [
+		int(energy), int(_energy_capacity()), _format_number(revenue_rate * energy_per_revenue), _format_number(training_rate), _format_number(regen)
+	]
 	capacity_label.text = "Server capacity: %s/day" % _format_number(_serving_capacity())
 	progress_bar.value = users
 
@@ -973,8 +996,13 @@ func _update_labels() -> void:
 			btn.text = "%s — Unlocked (×%.1f)" % [cap["name"], cap["multiplier"]]
 			btn.disabled = true
 		elif i == unlocked_capabilities:
-			btn.text = "%s — Unlock for %s data (×%.1f growth, permanent)" % [cap["name"], _format_number(cap["cost"]), cap["multiplier"]]
-			btn.disabled = data < cap["cost"]
+			if training_index == i:
+				var pct: int = int(round(100.0 * training_energy_invested / cap["energy"]))
+				btn.text = "%s — Training... %d%% (energy %s / %s)" % [cap["name"], pct, _format_number(training_energy_invested), _format_number(cap["energy"])]
+				btn.disabled = true
+			else:
+				btn.text = "%s — Start training for %s data (×%.1f growth, ~%s days)" % [cap["name"], _format_number(cap["cost"]), cap["multiplier"], _format_number(cap["energy"] / MAX_TRAINING_ENERGY_RATE)]
+				btn.disabled = data < cap["cost"]
 		else:
 			btn.text = "%s — Locked" % cap["name"]
 			btn.disabled = true
@@ -997,7 +1025,7 @@ func _update_labels() -> void:
 
 
 func _is_any_upgrade_available() -> bool:
-	if unlocked_capabilities < capabilities.size():
+	if training_index == -1 and unlocked_capabilities < capabilities.size():
 		var next_cap = capabilities[unlocked_capabilities]
 		if data >= next_cap["cost"]:
 			return true
@@ -1051,6 +1079,8 @@ func _save_game() -> void:
 		"compute_tier_counts": compute_counts,
 		"power_tier_counts": power_counts,
 		"unlocked_capabilities": unlocked_capabilities,
+		"training_index": training_index,
+		"training_energy_invested": training_energy_invested,
 		"game_won": game_won,
 		"elapsed_days": elapsed_days,
 	}
@@ -1082,6 +1112,8 @@ func _load_game() -> bool:
 	data = parsed.get("data", 0.0)
 	energy = parsed.get("energy", BASE_ENERGY_CAPACITY)
 	unlocked_capabilities = parsed.get("unlocked_capabilities", 0)
+	training_index = parsed.get("training_index", -1)
+	training_energy_invested = parsed.get("training_energy_invested", 0.0)
 	game_won = parsed.get("game_won", false)
 	elapsed_days = parsed.get("elapsed_days", 0.0)
 
