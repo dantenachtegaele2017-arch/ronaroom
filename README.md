@@ -43,7 +43,15 @@ assets/
   audio/    # sound/music
 ```
 
-## Current status (v9)
+## Current status (v10)
+
+- [x] Every resource, section, segment, capability, and infrastructure tier now has an icon (emoji-based, no art pipeline needed) — Dashboard/Upgrades tabs, Users/Revenue/Data/Energy/Server capacity/Model strength, all 8 segments, all 8 capabilities, all 5 compute tiers, all 5 power tiers
+- [x] A shared UI theme sets a bigger base text size (18px, up from Godot's default 16px) across every Label/Button/LineEdit, so body text reads clearly on a real phone instead of just a desktop preview
+- [x] Touch targets enlarged throughout — buttons went from 44-48px to 52-56px minimum height (well above the 44px mobile minimum), progress bars from 24-26px to 32px, notification close button to 40×40px
+- [x] Globe viewport enlarged (260→300px) to be a clearer focal point
+- [x] Notification cards widened (360→420px) for more comfortable reading
+
+## Previous status (v9)
 
 - [x] Concept defined
 - [x] Core loop: launch on Nov 30, 2022 with 120 beta users → generate Revenue (capped by Compute × Power) and Data (unlimited) → Data starts training capabilities that **permanently** boost growth once complete → Revenue funds infrastructure

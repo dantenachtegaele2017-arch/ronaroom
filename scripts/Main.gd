@@ -44,14 +44,14 @@ const MAX_TRAINING_ENERGY_RATE := 1.0
 # real tech hubs), not a claim about where each segment's users actually are
 # — the segments themselves are demographic, not geographic.
 const SEGMENT_DATA := [
-	{"name": "AI Enthusiasts", "users": 150000000.0, "lat": 37.0, "lon": -122.0},
-	{"name": "Developers", "users": 30000000.0, "lat": 13.0, "lon": 77.0},
-	{"name": "Students", "users": 250000000.0, "lat": 51.0, "lon": 0.0},
-	{"name": "Knowledge Workers", "users": 1000000000.0, "lat": 40.0, "lon": -74.0},
-	{"name": "Businesses", "users": 300000000.0, "lat": 35.0, "lon": 139.0},
-	{"name": "Everyday Consumers", "users": 2600000000.0, "lat": -23.0, "lon": -46.0},
-	{"name": "Governments", "users": 300000000.0, "lat": 50.0, "lon": 4.0},
-	{"name": "Skeptics", "users": 750000000.0, "lat": -33.0, "lon": 151.0},
+	{"name": "AI Enthusiasts", "icon": "🤩", "users": 150000000.0, "lat": 37.0, "lon": -122.0},
+	{"name": "Developers", "icon": "👨‍💻", "users": 30000000.0, "lat": 13.0, "lon": 77.0},
+	{"name": "Students", "icon": "🎓", "users": 250000000.0, "lat": 51.0, "lon": 0.0},
+	{"name": "Knowledge Workers", "icon": "💼", "users": 1000000000.0, "lat": 40.0, "lon": -74.0},
+	{"name": "Businesses", "icon": "🏢", "users": 300000000.0, "lat": 35.0, "lon": 139.0},
+	{"name": "Everyday Consumers", "icon": "🏠", "users": 2600000000.0, "lat": -23.0, "lon": -46.0},
+	{"name": "Governments", "icon": "🏛️", "users": 300000000.0, "lat": 50.0, "lon": 4.0},
+	{"name": "Skeptics", "icon": "🤨", "users": 750000000.0, "lat": -33.0, "lon": 151.0},
 ]
 
 # --- Game state ---
@@ -84,18 +84,18 @@ var game_start_unix: int = 0
 # as revenue allows (same pattern as most idle games' multi-building lists).
 # Each tier can be bought many times; "count" is mutated at runtime.
 var compute_tiers: Array = [
-	{"name": "Personal Server", "description": "A spare machine in your garage.", "base_cost": 0.05, "cost_growth": 1.15, "capacity": 0.01, "count": 0},
-	{"name": "Server Rack", "description": "A proper rack of rented servers.", "base_cost": 2.0, "cost_growth": 1.17, "capacity": 0.15, "count": 0},
-	{"name": "Server Farm", "description": "A warehouse full of racks.", "base_cost": 80.0, "cost_growth": 1.19, "capacity": 2.0, "count": 0},
-	{"name": "Small Datacenter", "description": "A dedicated facility, built for scale.", "base_cost": 3000.0, "cost_growth": 1.22, "capacity": 40.0, "count": 0},
-	{"name": "Hyperscale Datacenter", "description": "Planet-scale compute.", "base_cost": 150000.0, "cost_growth": 1.25, "capacity": 900.0, "count": 0},
+	{"name": "Personal Server", "icon": "💻", "description": "A spare machine in your garage.", "base_cost": 0.05, "cost_growth": 1.15, "capacity": 0.01, "count": 0},
+	{"name": "Server Rack", "icon": "🗄️", "description": "A proper rack of rented servers.", "base_cost": 2.0, "cost_growth": 1.17, "capacity": 0.15, "count": 0},
+	{"name": "Server Farm", "icon": "🏭", "description": "A warehouse full of racks.", "base_cost": 80.0, "cost_growth": 1.19, "capacity": 2.0, "count": 0},
+	{"name": "Small Datacenter", "icon": "🏢", "description": "A dedicated facility, built for scale.", "base_cost": 3000.0, "cost_growth": 1.22, "capacity": 40.0, "count": 0},
+	{"name": "Hyperscale Datacenter", "icon": "🏙️", "description": "Planet-scale compute.", "base_cost": 150000.0, "cost_growth": 1.25, "capacity": 900.0, "count": 0},
 ]
 var power_tiers: Array = [
-	{"name": "Backup Generator", "description": "A noisy diesel generator out back.", "base_cost": 0.04, "cost_growth": 1.15, "energy": 0.05, "count": 0},
-	{"name": "Solar Panels", "description": "A few panels on the roof.", "base_cost": 1.5, "cost_growth": 1.17, "energy": 0.6, "count": 0},
-	{"name": "Wind Turbines", "description": "A small wind farm under contract.", "base_cost": 60.0, "cost_growth": 1.19, "energy": 8.0, "count": 0},
-	{"name": "Small Power Plant", "description": "Dedicated grid capacity, just for you.", "base_cost": 2500.0, "cost_growth": 1.22, "energy": 150.0, "count": 0},
-	{"name": "Grid-Scale Power Plant", "description": "Industrial-scale energy production.", "base_cost": 120000.0, "cost_growth": 1.25, "energy": 3500.0, "count": 0},
+	{"name": "Backup Generator", "icon": "🔌", "description": "A noisy diesel generator out back.", "base_cost": 0.04, "cost_growth": 1.15, "energy": 0.05, "count": 0},
+	{"name": "Solar Panels", "icon": "☀️", "description": "A few panels on the roof.", "base_cost": 1.5, "cost_growth": 1.17, "energy": 0.6, "count": 0},
+	{"name": "Wind Turbines", "icon": "🍃", "description": "A small wind farm under contract.", "base_cost": 60.0, "cost_growth": 1.19, "energy": 8.0, "count": 0},
+	{"name": "Small Power Plant", "icon": "🏭", "description": "Dedicated grid capacity, just for you.", "base_cost": 2500.0, "cost_growth": 1.22, "energy": 150.0, "count": 0},
+	{"name": "Grid-Scale Power Plant", "icon": "⚡", "description": "Industrial-scale energy production.", "base_cost": 120000.0, "cost_growth": 1.25, "energy": 3500.0, "count": 0},
 ]
 
 var segments: Array = []
@@ -106,14 +106,14 @@ var next_milestone_index: int = 0
 # MAX_TRAINING_ENERGY_RATE cap above, that's also its minimum duration in
 # days (which, at 1 real second per day, is also its minimum real time).
 var capabilities: Array = [
-	{"name": "Basic Q&A", "description": "Answer simple factual questions.", "cost": 15.0, "energy": 30.0, "multiplier": 1.3},
-	{"name": "Code Assistance", "description": "Help developers write and debug code.", "cost": 120.0, "energy": 90.0, "multiplier": 1.3},
-	{"name": "Summarization", "description": "Condense long documents on demand.", "cost": 600.0, "energy": 180.0, "multiplier": 1.4},
-	{"name": "Multimodal Understanding", "description": "Process images and audio, not just text.", "cost": 3000.0, "energy": 300.0, "multiplier": 1.4},
-	{"name": "Autonomous Agents", "description": "Complete multi-step tasks without supervision.", "cost": 15000.0, "energy": 600.0, "multiplier": 1.5},
-	{"name": "Robotics Control", "description": "Operate physical robots and machinery.", "cost": 90000.0, "energy": 1200.0, "multiplier": 1.6},
-	{"name": "Infrastructure Integration", "description": "Run inside power grids, logistics, and financial systems.", "cost": 500000.0, "energy": 2400.0, "multiplier": 1.7},
-	{"name": "Global Deployment", "description": "Operate at planetary scale across every network.", "cost": 3000000.0, "energy": 4800.0, "multiplier": 1.8},
+	{"name": "Basic Q&A", "icon": "💬", "description": "Answer simple factual questions.", "cost": 15.0, "energy": 30.0, "multiplier": 1.3},
+	{"name": "Code Assistance", "icon": "💻", "description": "Help developers write and debug code.", "cost": 120.0, "energy": 90.0, "multiplier": 1.3},
+	{"name": "Summarization", "icon": "📝", "description": "Condense long documents on demand.", "cost": 600.0, "energy": 180.0, "multiplier": 1.4},
+	{"name": "Multimodal Understanding", "icon": "🖼️", "description": "Process images and audio, not just text.", "cost": 3000.0, "energy": 300.0, "multiplier": 1.4},
+	{"name": "Autonomous Agents", "icon": "🤖", "description": "Complete multi-step tasks without supervision.", "cost": 15000.0, "energy": 600.0, "multiplier": 1.5},
+	{"name": "Robotics Control", "icon": "🦾", "description": "Operate physical robots and machinery.", "cost": 90000.0, "energy": 1200.0, "multiplier": 1.6},
+	{"name": "Infrastructure Integration", "icon": "🏗️", "description": "Run inside power grids, logistics, and financial systems.", "cost": 500000.0, "energy": 2400.0, "multiplier": 1.7},
+	{"name": "Global Deployment", "icon": "🌍", "description": "Operate at planetary scale across every network.", "cost": 3000000.0, "energy": 4800.0, "multiplier": 1.8},
 ]
 var unlocked_capabilities: int = 0
 var training_index: int = -1
@@ -179,6 +179,7 @@ func _init_segments() -> void:
 	for d in SEGMENT_DATA:
 		segments.append({
 			"name": d["name"],
+			"icon": d["icon"],
 			"population": d["users"],
 			"current": 0.0,
 			"notified": false,
@@ -202,6 +203,16 @@ func _init_milestones() -> void:
 
 
 func _build_ui() -> void:
+	# Bigger-by-default text and controls so the whole game reads clearly on
+	# an actual phone screen, not just a desktop preview window. Individual
+	# nodes still override this where a specific size is needed (headers,
+	# captions).
+	var ui_theme := Theme.new()
+	ui_theme.set_font_size("font_size", "Label", 18)
+	ui_theme.set_font_size("font_size", "Button", 18)
+	ui_theme.set_font_size("font_size", "LineEdit", 18)
+	theme = ui_theme
+
 	var bg := ColorRect.new()
 	bg.color = Color(0.07, 0.08, 0.11)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -227,8 +238,8 @@ func _build_name_overlay() -> void:
 	center.add_child(box)
 
 	var title := Label.new()
-	title.text = "Name your language model"
-	title.add_theme_font_size_override("font_size", 28)
+	title.text = "🚀 Name your language model"
+	title.add_theme_font_size_override("font_size", 30)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD
 	box.add_child(title)
@@ -242,13 +253,13 @@ func _build_name_overlay() -> void:
 
 	name_edit = LineEdit.new()
 	name_edit.placeholder_text = "e.g. Athena-1"
-	name_edit.custom_minimum_size = Vector2(0, 44)
+	name_edit.custom_minimum_size = Vector2(0, 56)
 	name_edit.text_submitted.connect(func(_t): _on_start_pressed())
 	box.add_child(name_edit)
 
 	var start_button := Button.new()
-	start_button.text = "Launch"
-	start_button.custom_minimum_size = Vector2(0, 48)
+	start_button.text = "🚀 Launch"
+	start_button.custom_minimum_size = Vector2(0, 56)
 	start_button.pressed.connect(_on_start_pressed)
 	box.add_child(start_button)
 
@@ -311,23 +322,23 @@ func _new_card(parent: Control) -> VBoxContainer:
 func _section_title(text: String, parent: Control) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_font_size_override("font_size", 21)
 	parent.add_child(label)
 	return label
 
 
 func _build_globe_card(panel: VBoxContainer) -> void:
 	var globe_card := _new_card(panel)
-	_section_title("Global reach", globe_card)
+	_section_title("🌍 Global reach", globe_card)
 
 	var viewport_container := SubViewportContainer.new()
-	viewport_container.custom_minimum_size = Vector2(260, 260)
+	viewport_container.custom_minimum_size = Vector2(300, 300)
 	viewport_container.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	viewport_container.stretch = true
 	globe_card.add_child(viewport_container)
 
 	var viewport := SubViewport.new()
-	viewport.size = Vector2i(260, 260)
+	viewport.size = Vector2i(300, 300)
 	viewport.transparent_bg = true
 	viewport_container.add_child(viewport)
 
@@ -435,11 +446,11 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 
 	date_label = Label.new()
 	date_label.modulate = Color(1, 1, 1, 0.6)
-	date_label.add_theme_font_size_override("font_size", 13)
+	date_label.add_theme_font_size_override("font_size", 15)
 	panel.add_child(date_label)
 
 	status_label = Label.new()
-	status_label.add_theme_font_size_override("font_size", 22)
+	status_label.add_theme_font_size_override("font_size", 24)
 	panel.add_child(status_label)
 
 	event_label = Label.new()
@@ -450,10 +461,10 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	_build_globe_card(panel)
 
 	var resources_card := _new_card(panel)
-	_section_title("Resources", resources_card)
+	_section_title("💼 Resources", resources_card)
 
 	users_label = Label.new()
-	users_label.add_theme_font_size_override("font_size", 17)
+	users_label.add_theme_font_size_override("font_size", 19)
 	resources_card.add_child(users_label)
 
 	revenue_label = Label.new()
@@ -466,6 +477,7 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 
 	energy_label = Label.new()
 	energy_label.modulate = Color(1.0, 0.75, 0.35)
+	energy_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	resources_card.add_child(energy_label)
 
 	capacity_label = Label.new()
@@ -477,49 +489,52 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	resources_card.add_child(strength_label_dashboard)
 
 	var spread_caption := Label.new()
-	spread_caption.text = "World adoption"
+	spread_caption.text = "🌐 World adoption"
 	spread_caption.modulate = Color(1, 1, 1, 0.55)
-	spread_caption.add_theme_font_size_override("font_size", 13)
+	spread_caption.add_theme_font_size_override("font_size", 15)
 	resources_card.add_child(spread_caption)
 
 	progress_bar = ProgressBar.new()
 	progress_bar.min_value = 0
 	progress_bar.max_value = max_users
+	progress_bar.custom_minimum_size = Vector2(0, 32)
 	resources_card.add_child(progress_bar)
 
 	var segments_card := _new_card(panel)
-	_section_title("Adoption by segment", segments_card)
+	_section_title("📈 Adoption by segment", segments_card)
 
 	segment_bars.clear()
 	for segment in segments:
 		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
 		var sname := Label.new()
-		sname.text = segment["name"]
-		sname.custom_minimum_size = Vector2(170, 0)
+		sname.text = "%s %s" % [segment["icon"], segment["name"]]
+		sname.custom_minimum_size = Vector2(190, 0)
 		sname.autowrap_mode = TextServer.AUTOWRAP_WORD
 		row.add_child(sname)
 		var bar := ProgressBar.new()
 		bar.min_value = 0
 		bar.max_value = segment["population"]
 		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bar.custom_minimum_size = Vector2(0, 26)
+		bar.custom_minimum_size = Vector2(0, 32)
 		row.add_child(bar)
 		segments_card.add_child(row)
 		segment_bars.append(bar)
 
 	var reset_button := Button.new()
-	reset_button.text = "Start new game"
+	reset_button.text = "🔄 Start new game"
 	reset_button.modulate = Color(1, 1, 1, 0.6)
+	reset_button.custom_minimum_size = Vector2(0, 52)
 	reset_button.pressed.connect(_on_reset_pressed)
 	panel.add_child(reset_button)
 
 
 func _build_tier_row(parent: Control, tier: Dictionary, index: int, callback: Callable) -> Button:
 	var row := VBoxContainer.new()
-	row.add_theme_constant_override("separation", 2)
+	row.add_theme_constant_override("separation", 3)
 
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(0, 44)
+	btn.custom_minimum_size = Vector2(0, 56)
 	btn.pressed.connect(callback.bind(index))
 	row.add_child(btn)
 
@@ -527,7 +542,7 @@ func _build_tier_row(parent: Control, tier: Dictionary, index: int, callback: Ca
 	desc.text = tier["description"]
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD
 	desc.modulate = Color(1, 1, 1, 0.55)
-	desc.add_theme_font_size_override("font_size", 13)
+	desc.add_theme_font_size_override("font_size", 15)
 	row.add_child(desc)
 
 	parent.add_child(row)
@@ -547,7 +562,7 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 	upgrades_scroll.add_child(panel)
 
 	var cap_card := _new_card(panel)
-	_section_title("Capabilities — permanent, trained on Data", cap_card)
+	_section_title("🎓 Capabilities — permanent, trained on Data", cap_card)
 
 	strength_label_upgrades = Label.new()
 	strength_label_upgrades.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -560,10 +575,10 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 	for i in range(capabilities.size()):
 		var cap = capabilities[i]
 		var row := VBoxContainer.new()
-		row.add_theme_constant_override("separation", 2)
+		row.add_theme_constant_override("separation", 3)
 
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(0, 48)
+		btn.custom_minimum_size = Vector2(0, 56)
 		btn.pressed.connect(_on_start_training.bind(i))
 		row.add_child(btn)
 
@@ -571,18 +586,18 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 		desc.text = cap["description"]
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD
 		desc.modulate = Color(1, 1, 1, 0.55)
-		desc.add_theme_font_size_override("font_size", 13)
+		desc.add_theme_font_size_override("font_size", 15)
 		row.add_child(desc)
 
 		cap_card.add_child(row)
 		capability_buttons.append(btn)
 
 	var compute_card := _new_card(panel)
-	_section_title("Compute — funded by Revenue", compute_card)
+	_section_title("🖥️ Compute — funded by Revenue", compute_card)
 	var compute_hint := Label.new()
 	compute_hint.text = "Server hardware. Raises how many users you can serve at once."
 	compute_hint.modulate = Color(1, 1, 1, 0.55)
-	compute_hint.add_theme_font_size_override("font_size", 13)
+	compute_hint.add_theme_font_size_override("font_size", 15)
 	compute_hint.autowrap_mode = TextServer.AUTOWRAP_WORD
 	compute_card.add_child(compute_hint)
 	compute_card.add_child(HSeparator.new())
@@ -593,11 +608,11 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 		compute_tier_buttons.append(btn)
 
 	var power_card := _new_card(panel)
-	_section_title("Power — funded by Revenue", power_card)
+	_section_title("⚡ Power — funded by Revenue", power_card)
 	var power_hint := Label.new()
 	power_hint.text = "Energy source. Keeps your compute infrastructure running."
 	power_hint.modulate = Color(1, 1, 1, 0.55)
-	power_hint.add_theme_font_size_override("font_size", 13)
+	power_hint.add_theme_font_size_override("font_size", 15)
 	power_hint.autowrap_mode = TextServer.AUTOWRAP_WORD
 	power_card.add_child(power_hint)
 	power_card.add_child(HSeparator.new())
@@ -610,14 +625,15 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 
 func _build_tab_bar(shell: VBoxContainer) -> void:
 	var tab_bar := HBoxContainer.new()
-	tab_bar.custom_minimum_size = Vector2(0, 56)
+	tab_bar.custom_minimum_size = Vector2(0, 64)
 	tab_bar.add_theme_constant_override("separation", 8)
 	shell.add_child(tab_bar)
 
 	var tab_group := ButtonGroup.new()
 
 	var dashboard_tab_button := Button.new()
-	dashboard_tab_button.text = "Dashboard"
+	dashboard_tab_button.text = "📊 Dashboard"
+	dashboard_tab_button.add_theme_font_size_override("font_size", 19)
 	dashboard_tab_button.toggle_mode = true
 	dashboard_tab_button.button_pressed = true
 	dashboard_tab_button.button_group = tab_group
@@ -626,7 +642,8 @@ func _build_tab_bar(shell: VBoxContainer) -> void:
 	tab_bar.add_child(dashboard_tab_button)
 
 	var upgrades_tab_button := Button.new()
-	upgrades_tab_button.text = "Upgrades"
+	upgrades_tab_button.text = "🛠️ Upgrades"
+	upgrades_tab_button.add_theme_font_size_override("font_size", 19)
 	upgrades_tab_button.toggle_mode = true
 	upgrades_tab_button.button_group = tab_group
 	upgrades_tab_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -659,7 +676,7 @@ func _build_notifications_layer() -> void:
 	notifications_container.anchor_right = 1.0
 	notifications_container.anchor_top = 0.0
 	notifications_container.anchor_bottom = 0.0
-	notifications_container.offset_left = -360.0
+	notifications_container.offset_left = -420.0
 	notifications_container.offset_right = -16.0
 	notifications_container.offset_top = 16.0
 	notifications_container.offset_bottom = 600.0
@@ -693,7 +710,7 @@ func _show_notification(headline: String, body: String = "") -> void:
 	var headline_label := Label.new()
 	headline_label.text = "📰 " + headline
 	headline_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	headline_label.custom_minimum_size = Vector2(260, 0)
+	headline_label.custom_minimum_size = Vector2(320, 0)
 	content.add_child(headline_label)
 
 	if body != "":
@@ -701,13 +718,14 @@ func _show_notification(headline: String, body: String = "") -> void:
 		body_label.text = body
 		body_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 		body_label.modulate = Color(1, 1, 1, 0.75)
-		body_label.add_theme_font_size_override("font_size", 13)
+		body_label.add_theme_font_size_override("font_size", 15)
 		body_label.visible = false
 		content.add_child(body_label)
 
 		var toggle_button := Button.new()
 		toggle_button.text = "Read more"
 		toggle_button.flat = true
+		toggle_button.custom_minimum_size = Vector2(0, 40)
 		toggle_button.pressed.connect(func():
 			body_label.visible = not body_label.visible
 			toggle_button.text = "Show less" if body_label.visible else "Read more"
@@ -716,7 +734,8 @@ func _show_notification(headline: String, body: String = "") -> void:
 
 	var close_button := Button.new()
 	close_button.text = "×"
-	close_button.custom_minimum_size = Vector2(28, 28)
+	close_button.add_theme_font_size_override("font_size", 20)
+	close_button.custom_minimum_size = Vector2(40, 40)
 	close_button.pressed.connect(func(): card.queue_free())
 	row.add_child(close_button)
 
@@ -948,9 +967,9 @@ func _current_date_string() -> String:
 
 
 func _update_labels() -> void:
-	date_label.text = _current_date_string()
-	status_label.text = "%s — %s" % [model_name, ("GLOBAL TAKEOVER COMPLETE" if game_won else "active")]
-	users_label.text = "Users: %s" % _format_number(floor(users))
+	date_label.text = "📅 %s" % _current_date_string()
+	status_label.text = "🤖 %s — %s" % [model_name, ("GLOBAL TAKEOVER COMPLETE" if game_won else "active")]
+	users_label.text = "👥 Users: %s" % _format_number(floor(users))
 
 	# Steady-state estimate of how Revenue-serving and Training would split
 	# the available energy regen if both want as much as they can use —
@@ -967,18 +986,18 @@ func _update_labels() -> void:
 		revenue_rate = desired_revenue_rate * display_scale
 		training_rate = training_energy_want * display_scale
 
-	revenue_label.text = "Revenue: $%s  (+$%s/day)" % [_format_number(revenue), _format_number(revenue_rate)]
+	revenue_label.text = "💰 Revenue: $%s  (+$%s/day)" % [_format_number(revenue), _format_number(revenue_rate)]
 
 	var data_rate: float = users * data_per_user
-	data_label.text = "Data: %s  (+%s/day)" % [_format_number(data), _format_number(data_rate)]
+	data_label.text = "🧠 Data: %s  (+%s/day)" % [_format_number(data), _format_number(data_rate)]
 
-	energy_label.text = "Energy: %d / %d  (using %s/day serving, %s/day training, of %s/day available)" % [
+	energy_label.text = "⚡ Energy: %d / %d  (using %s/day serving, %s/day training, of %s/day available)" % [
 		int(energy), int(_energy_capacity()), _format_number(revenue_rate * energy_per_revenue), _format_number(training_rate), _format_number(regen)
 	]
-	capacity_label.text = "Server capacity: %s/day" % _format_number(_serving_capacity())
+	capacity_label.text = "🖥️ Server capacity: %s/day" % _format_number(_serving_capacity())
 	progress_bar.value = users
 
-	var strength_short := "Model strength: ×%.2f growth" % permanent_growth_multiplier
+	var strength_short := "🚀 Model strength: ×%.2f growth" % permanent_growth_multiplier
 	strength_label_dashboard.text = strength_short
 
 	var strength_long := strength_short
@@ -993,32 +1012,32 @@ func _update_labels() -> void:
 		var cap = capabilities[i]
 		var btn: Button = capability_buttons[i]
 		if i < unlocked_capabilities:
-			btn.text = "%s — Unlocked (×%.1f)" % [cap["name"], cap["multiplier"]]
+			btn.text = "%s %s — Unlocked (×%.1f)" % [cap["icon"], cap["name"], cap["multiplier"]]
 			btn.disabled = true
 		elif i == unlocked_capabilities:
 			if training_index == i:
 				var pct: int = int(round(100.0 * training_energy_invested / cap["energy"]))
-				btn.text = "%s — Training... %d%% (energy %s / %s)" % [cap["name"], pct, _format_number(training_energy_invested), _format_number(cap["energy"])]
+				btn.text = "%s %s — Training... %d%% (energy %s / %s)" % [cap["icon"], cap["name"], pct, _format_number(training_energy_invested), _format_number(cap["energy"])]
 				btn.disabled = true
 			else:
-				btn.text = "%s — Start training for %s data (×%.1f growth, ~%s days)" % [cap["name"], _format_number(cap["cost"]), cap["multiplier"], _format_number(cap["energy"] / MAX_TRAINING_ENERGY_RATE)]
+				btn.text = "%s %s — Start training for %s data (×%.1f growth, ~%s days)" % [cap["icon"], cap["name"], _format_number(cap["cost"]), cap["multiplier"], _format_number(cap["energy"] / MAX_TRAINING_ENERGY_RATE)]
 				btn.disabled = data < cap["cost"]
 		else:
-			btn.text = "%s — Locked" % cap["name"]
+			btn.text = "🔒 %s — Locked" % cap["name"]
 			btn.disabled = true
 
 	for i in range(compute_tiers.size()):
 		var tier = compute_tiers[i]
 		var btn: Button = compute_tier_buttons[i]
 		var cost := _tier_cost(tier)
-		btn.text = "%s — owned %d — $%s (+%s/day capacity)" % [tier["name"], tier["count"], _format_number(cost), _format_number(tier["capacity"])]
+		btn.text = "%s %s — owned %d — $%s (+%s/day capacity)" % [tier["icon"], tier["name"], tier["count"], _format_number(cost), _format_number(tier["capacity"])]
 		btn.disabled = revenue < cost
 
 	for i in range(power_tiers.size()):
 		var tier = power_tiers[i]
 		var btn: Button = power_tier_buttons[i]
 		var cost := _tier_cost(tier)
-		btn.text = "%s — owned %d — $%s (+%s energy/day)" % [tier["name"], tier["count"], _format_number(cost), _format_number(tier["energy"])]
+		btn.text = "%s %s — owned %d — $%s (+%s energy/day)" % [tier["icon"], tier["name"], tier["count"], _format_number(cost), _format_number(tier["energy"])]
 		btn.disabled = revenue < cost
 
 	upgrade_dot.visible = _is_any_upgrade_available()
