@@ -27,6 +27,21 @@ const MAX_GROWTH_DOTS := 60
 # always a real minimum duration, not just an instant unlock.
 const MAX_TRAINING_ENERGY_RATE := 1.0
 
+# Idle progress while the game isn't open. Capped so stepping away for a long
+# time gives a welcome-back boost, not a way to skip most of the game.
+const MAX_OFFLINE_DAYS := 300.0
+
+# Each of the three upgrade trees gets one consistent accent color, used on
+# its card border, its icon badges, and the matching Dashboard stat that
+# feeds it — so the whole thing reads as one connected system instead of a
+# flat list of buttons.
+const COLOR_CAPABILITIES := Color(0.58, 0.42, 0.88)
+const COLOR_COMPUTE := Color(0.27, 0.52, 0.88)
+const COLOR_POWER := Color(0.88, 0.58, 0.2)
+const COLOR_USERS := Color(0.22, 0.62, 0.6)
+const COLOR_REVENUE := Color(0.3, 0.68, 0.4)
+const COLOR_NEUTRAL := Color(0.32, 0.35, 0.42)
+
 # Population segments, roughly grounded in real-world figures (order of
 # magnitude, not precise) rather than an even split:
 # - Developers: ~28-47M professional software developers worldwide (various
@@ -78,11 +93,14 @@ var game_started: bool = false
 var game_won: bool = false
 var elapsed_days: float = 0.0
 var game_start_unix: int = 0
+var last_saved_unix: int = 0
 
 # Realistic infrastructure progression: you start by buying a cheap unit of
 # the cheapest tier, and naturally graduate to pricier/more-efficient tiers
 # as revenue allows (same pattern as most idle games' multi-building lists).
-# Each tier can be bought many times; "count" is mutated at runtime.
+# Each tier can be bought many times; "count" is mutated at runtime. A tier
+# only becomes visible once the previous one has been bought at least once
+# (see _tiers_unlocked_count) — that's the tech-tree fog of war.
 var compute_tiers: Array = [
 	{"name": "Personal Server", "icon": "💻", "description": "A spare machine in your garage.", "base_cost": 0.05, "cost_growth": 1.15, "capacity": 0.01, "count": 0},
 	{"name": "Server Rack", "icon": "🗄️", "description": "A proper rack of rented servers.", "base_cost": 2.0, "cost_growth": 1.17, "capacity": 0.15, "count": 0},
@@ -142,13 +160,25 @@ var strength_label_dashboard: Label
 var progress_bar: ProgressBar
 var segment_bars: Array = []
 var strength_label_upgrades: Label
+var capability_rows: Array = []
 var capability_buttons: Array = []
+var capability_mystery_row: Control
+var capability_mystery_label: Label
+var compute_tier_rows: Array = []
 var compute_tier_buttons: Array = []
+var compute_mystery_row: Control
+var compute_mystery_label: Label
+var power_tier_rows: Array = []
 var power_tier_buttons: Array = []
+var power_mystery_row: Control
+var power_mystery_label: Label
 var upgrade_dot: Control
 var notifications_container: VBoxContainer
 var globe_pivot: Node3D
 var globe_dots_root: Node3D
+var confirm_overlay: Control
+var win_overlay: Control
+var win_stats_label: Label
 
 
 func _ready() -> void:
@@ -165,7 +195,10 @@ func _ready() -> void:
 		_distribute_segments(false)
 		_catch_up_growth_dots()
 		_check_milestones()
+		_apply_offline_progress()
 		_update_labels()
+		if game_won:
+			_show_win_overlay()
 	else:
 		name_overlay.visible = true
 		hud_root.visible = false
@@ -221,6 +254,8 @@ func _build_ui() -> void:
 	_build_name_overlay()
 	_build_hud()
 	_build_notifications_layer()
+	_build_confirm_overlay()
+	_build_win_overlay()
 
 
 func _build_name_overlay() -> void:
@@ -238,7 +273,7 @@ func _build_name_overlay() -> void:
 	center.add_child(box)
 
 	var title := Label.new()
-	title.text = "🚀 Name your language model"
+	title.text = "Name your language model"
 	title.add_theme_font_size_override("font_size", 30)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -258,7 +293,7 @@ func _build_name_overlay() -> void:
 	box.add_child(name_edit)
 
 	var start_button := Button.new()
-	start_button.text = "🚀 Launch"
+	start_button.text = "Launch"
 	start_button.custom_minimum_size = Vector2(0, 56)
 	start_button.pressed.connect(_on_start_pressed)
 	box.add_child(start_button)
@@ -298,7 +333,65 @@ func _build_hud() -> void:
 	_show_dashboard_tab()
 
 
-func _new_card(parent: Control) -> VBoxContainer:
+# --- Icon badge system ---------------------------------------------------
+# A small colored rounded-square with a symbol centered inside, sized and
+# styled consistently everywhere it's used. This is the "real icon" system
+# replacing bare inline emoji — the color-coding is what ties each stat to
+# the tech tree that grows it.
+
+func _make_icon_badge(symbol: String, bg_color: Color, size: float = 34.0) -> PanelContainer:
+	var badge := PanelContainer.new()
+	badge.custom_minimum_size = Vector2(size, size)
+	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg_color
+	var radius := int(size * 0.28)
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	badge.add_theme_stylebox_override("panel", style)
+
+	var label := Label.new()
+	label.text = symbol
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", int(size * 0.52))
+	label.add_theme_color_override("font_color", Color(1, 1, 1))
+	badge.add_child(label)
+
+	return badge
+
+
+func _icon_section_title(symbol: String, bg_color: Color, text: String, parent: Control) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	parent.add_child(row)
+	row.add_child(_make_icon_badge(symbol, bg_color))
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 21)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	row.add_child(label)
+
+
+func _stat_row(symbol: String, bg_color: Color, parent: Control) -> Label:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	parent.add_child(row)
+	row.add_child(_make_icon_badge(symbol, bg_color, 30))
+	var label := Label.new()
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	row.add_child(label)
+	return label
+
+
+func _new_card(parent: Control, accent: Color = Color(0, 0, 0, 0)) -> VBoxContainer:
 	var card := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.13, 0.14, 0.19)
@@ -310,6 +403,9 @@ func _new_card(parent: Control) -> VBoxContainer:
 	style.content_margin_right = 18
 	style.content_margin_top = 16
 	style.content_margin_bottom = 16
+	if accent.a > 0.0:
+		style.border_width_left = 5
+		style.border_color = accent
 	card.add_theme_stylebox_override("panel", style)
 	parent.add_child(card)
 
@@ -319,17 +415,9 @@ func _new_card(parent: Control) -> VBoxContainer:
 	return body
 
 
-func _section_title(text: String, parent: Control) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.add_theme_font_size_override("font_size", 21)
-	parent.add_child(label)
-	return label
-
-
 func _build_globe_card(panel: VBoxContainer) -> void:
 	var globe_card := _new_card(panel)
-	_section_title("🌍 Global reach", globe_card)
+	_icon_section_title("🌍", COLOR_USERS, "Global reach", globe_card)
 
 	var viewport_container := SubViewportContainer.new()
 	viewport_container.custom_minimum_size = Vector2(300, 300)
@@ -461,32 +549,14 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	_build_globe_card(panel)
 
 	var resources_card := _new_card(panel)
-	_section_title("💼 Resources", resources_card)
+	_icon_section_title("💼", COLOR_NEUTRAL, "Resources", resources_card)
 
-	users_label = Label.new()
-	users_label.add_theme_font_size_override("font_size", 19)
-	resources_card.add_child(users_label)
-
-	revenue_label = Label.new()
-	revenue_label.modulate = Color(0.55, 0.85, 0.55)
-	resources_card.add_child(revenue_label)
-
-	data_label = Label.new()
-	data_label.modulate = Color(0.65, 0.75, 1.0)
-	resources_card.add_child(data_label)
-
-	energy_label = Label.new()
-	energy_label.modulate = Color(1.0, 0.75, 0.35)
-	energy_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	resources_card.add_child(energy_label)
-
-	capacity_label = Label.new()
-	capacity_label.modulate = Color(0.55, 0.85, 0.55)
-	resources_card.add_child(capacity_label)
-
-	strength_label_dashboard = Label.new()
-	strength_label_dashboard.modulate = Color(0.9, 0.7, 1.0)
-	resources_card.add_child(strength_label_dashboard)
+	users_label = _stat_row("👥", COLOR_USERS, resources_card)
+	revenue_label = _stat_row("💰", COLOR_REVENUE, resources_card)
+	data_label = _stat_row("🧠", COLOR_CAPABILITIES, resources_card)
+	energy_label = _stat_row("⚡", COLOR_POWER, resources_card)
+	capacity_label = _stat_row("🖥️", COLOR_COMPUTE, resources_card)
+	strength_label_dashboard = _stat_row("🚀", COLOR_CAPABILITIES, resources_card)
 
 	var spread_caption := Label.new()
 	spread_caption.text = "🌐 World adoption"
@@ -501,7 +571,7 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	resources_card.add_child(progress_bar)
 
 	var segments_card := _new_card(panel)
-	_section_title("📈 Adoption by segment", segments_card)
+	_icon_section_title("📈", COLOR_USERS, "Adoption by segment", segments_card)
 
 	segment_bars.clear()
 	for segment in segments:
@@ -525,11 +595,11 @@ func _build_dashboard_tab(shell: VBoxContainer) -> void:
 	reset_button.text = "🔄 Start new game"
 	reset_button.modulate = Color(1, 1, 1, 0.6)
 	reset_button.custom_minimum_size = Vector2(0, 52)
-	reset_button.pressed.connect(_on_reset_pressed)
+	reset_button.pressed.connect(_on_reset_requested)
 	panel.add_child(reset_button)
 
 
-func _build_tier_row(parent: Control, tier: Dictionary, index: int, callback: Callable) -> Button:
+func _build_tier_row(parent: Control, tier: Dictionary, index: int, callback: Callable) -> Dictionary:
 	var row := VBoxContainer.new()
 	row.add_theme_constant_override("separation", 3)
 
@@ -546,7 +616,37 @@ func _build_tier_row(parent: Control, tier: Dictionary, index: int, callback: Ca
 	row.add_child(desc)
 
 	parent.add_child(row)
-	return btn
+	return {"row": row, "button": btn}
+
+
+func _build_mystery_row(parent: Control) -> Dictionary:
+	var row := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(1, 1, 1, 0.04)
+	style.corner_radius_top_left = 10
+	style.corner_radius_top_right = 10
+	style.corner_radius_bottom_left = 10
+	style.corner_radius_bottom_right = 10
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
+	row.add_theme_stylebox_override("panel", style)
+	row.visible = false
+	parent.add_child(row)
+
+	var inner := HBoxContainer.new()
+	inner.add_theme_constant_override("separation", 10)
+	row.add_child(inner)
+	inner.add_child(_make_icon_badge("🔒", COLOR_NEUTRAL, 28))
+
+	var label := Label.new()
+	label.modulate = Color(1, 1, 1, 0.55)
+	label.add_theme_font_size_override("font_size", 15)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	inner.add_child(label)
+
+	return {"row": row, "label": label}
 
 
 func _build_upgrades_tab(shell: VBoxContainer) -> void:
@@ -561,8 +661,9 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	upgrades_scroll.add_child(panel)
 
-	var cap_card := _new_card(panel)
-	_section_title("🎓 Capabilities — permanent, trained on Data", cap_card)
+	# --- Capabilities tree (trained on Data) ---
+	var cap_card := _new_card(panel, COLOR_CAPABILITIES)
+	_icon_section_title("🎓", COLOR_CAPABILITIES, "Capabilities — trained on Data", cap_card)
 
 	strength_label_upgrades = Label.new()
 	strength_label_upgrades.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -571,6 +672,7 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 
 	cap_card.add_child(HSeparator.new())
 
+	capability_rows.clear()
 	capability_buttons.clear()
 	for i in range(capabilities.size()):
 		var cap = capabilities[i]
@@ -590,10 +692,16 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 		row.add_child(desc)
 
 		cap_card.add_child(row)
+		capability_rows.append(row)
 		capability_buttons.append(btn)
 
-	var compute_card := _new_card(panel)
-	_section_title("🖥️ Compute — funded by Revenue", compute_card)
+	var cap_mystery := _build_mystery_row(cap_card)
+	capability_mystery_row = cap_mystery["row"]
+	capability_mystery_label = cap_mystery["label"]
+
+	# --- Compute tree (funded by Revenue) ---
+	var compute_card := _new_card(panel, COLOR_COMPUTE)
+	_icon_section_title("🖥️", COLOR_COMPUTE, "Compute — funded by Revenue", compute_card)
 	var compute_hint := Label.new()
 	compute_hint.text = "Server hardware. Raises how many users you can serve at once."
 	compute_hint.modulate = Color(1, 1, 1, 0.55)
@@ -602,13 +710,20 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 	compute_card.add_child(compute_hint)
 	compute_card.add_child(HSeparator.new())
 
+	compute_tier_rows.clear()
 	compute_tier_buttons.clear()
 	for i in range(compute_tiers.size()):
-		var btn := _build_tier_row(compute_card, compute_tiers[i], i, _on_buy_compute_tier)
-		compute_tier_buttons.append(btn)
+		var built := _build_tier_row(compute_card, compute_tiers[i], i, _on_buy_compute_tier)
+		compute_tier_rows.append(built["row"])
+		compute_tier_buttons.append(built["button"])
 
-	var power_card := _new_card(panel)
-	_section_title("⚡ Power — funded by Revenue", power_card)
+	var compute_mystery := _build_mystery_row(compute_card)
+	compute_mystery_row = compute_mystery["row"]
+	compute_mystery_label = compute_mystery["label"]
+
+	# --- Power tree (funded by Revenue) ---
+	var power_card := _new_card(panel, COLOR_POWER)
+	_icon_section_title("⚡", COLOR_POWER, "Power — funded by Revenue", power_card)
 	var power_hint := Label.new()
 	power_hint.text = "Energy source. Keeps your compute infrastructure running."
 	power_hint.modulate = Color(1, 1, 1, 0.55)
@@ -617,10 +732,16 @@ func _build_upgrades_tab(shell: VBoxContainer) -> void:
 	power_card.add_child(power_hint)
 	power_card.add_child(HSeparator.new())
 
+	power_tier_rows.clear()
 	power_tier_buttons.clear()
 	for i in range(power_tiers.size()):
-		var btn := _build_tier_row(power_card, power_tiers[i], i, _on_buy_power_tier)
-		power_tier_buttons.append(btn)
+		var built := _build_tier_row(power_card, power_tiers[i], i, _on_buy_power_tier)
+		power_tier_rows.append(built["row"])
+		power_tier_buttons.append(built["button"])
+
+	var power_mystery := _build_mystery_row(power_card)
+	power_mystery_row = power_mystery["row"]
+	power_mystery_label = power_mystery["label"]
 
 
 func _build_tab_bar(shell: VBoxContainer) -> void:
@@ -750,6 +871,116 @@ func _show_notification(headline: String, body: String = "") -> void:
 		)
 
 
+# --- Confirmation overlay (new: prevents an accidental one-click wipe) ---
+
+func _build_confirm_overlay() -> void:
+	confirm_overlay = Control.new()
+	confirm_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	confirm_overlay.visible = false
+	add_child(confirm_overlay)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.65)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	confirm_overlay.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	confirm_overlay.add_child(center)
+
+	var box := _new_card(center)
+	box.custom_minimum_size = Vector2(460, 0)
+
+	var title := Label.new()
+	title.text = "⚠️ Start a new game?"
+	title.add_theme_font_size_override("font_size", 22)
+	box.add_child(title)
+
+	var msg := Label.new()
+	msg.text = "This permanently erases %s and all its progress. This can't be undone." % ("your current model" if model_name == "" else model_name)
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD
+	msg.modulate = Color(1, 1, 1, 0.75)
+	box.add_child(msg)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 10)
+	box.add_child(btn_row)
+
+	var cancel_btn := Button.new()
+	cancel_btn.text = "Cancel"
+	cancel_btn.custom_minimum_size = Vector2(0, 52)
+	cancel_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cancel_btn.pressed.connect(func(): confirm_overlay.visible = false)
+	btn_row.add_child(cancel_btn)
+
+	var confirm_btn := Button.new()
+	confirm_btn.text = "🗑️ Erase and start over"
+	confirm_btn.custom_minimum_size = Vector2(0, 52)
+	confirm_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	confirm_btn.pressed.connect(func():
+		confirm_overlay.visible = false
+		_do_reset()
+	)
+	btn_row.add_child(confirm_btn)
+
+
+func _on_reset_requested() -> void:
+	confirm_overlay.visible = true
+
+
+# --- Win overlay (new: winning was previously just a text-label change) ---
+
+func _build_win_overlay() -> void:
+	win_overlay = Control.new()
+	win_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	win_overlay.visible = false
+	add_child(win_overlay)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0.05, 0.05, 0.08, 0.9)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	win_overlay.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	win_overlay.add_child(center)
+
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(520, 0)
+	box.add_theme_constant_override("separation", 14)
+	center.add_child(box)
+
+	var title := Label.new()
+	title.text = "🌍 GLOBAL TAKEOVER COMPLETE"
+	title.add_theme_font_size_override("font_size", 28)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD
+	box.add_child(title)
+
+	win_stats_label = Label.new()
+	win_stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	win_stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	win_stats_label.modulate = Color(1, 1, 1, 0.85)
+	box.add_child(win_stats_label)
+
+	var play_again := Button.new()
+	play_again.text = "🔄 Launch a new model"
+	play_again.custom_minimum_size = Vector2(0, 56)
+	play_again.pressed.connect(func():
+		win_overlay.visible = false
+		_do_reset()
+	)
+	box.add_child(play_again)
+
+
+func _show_win_overlay() -> void:
+	win_stats_label.text = "%s now serves every person on Earth.\n\nLaunched Nov 30, 2022 → completed %s\n(%s days)\n\nFinal model strength: ×%.2f\nCapabilities trained: %d/%d" % [
+		model_name, _current_date_string(), _format_number(elapsed_days),
+		permanent_growth_multiplier, unlocked_capabilities, capabilities.size()
+	]
+	win_overlay.visible = true
+
+
 func _show_dashboard_tab() -> void:
 	dashboard_scroll.visible = true
 	upgrades_scroll.visible = false
@@ -762,6 +993,18 @@ func _show_upgrades_tab() -> void:
 
 func _tier_cost(tier: Dictionary) -> float:
 	return tier["base_cost"] * pow(tier["cost_growth"], tier["count"])
+
+
+# A tier is part of the visible frontier once the previous one has been
+# bought at least once — the tech-tree fog of war for the repeatable trees.
+func _tiers_unlocked_count(tiers: Array) -> int:
+	var count := 1
+	for i in range(1, tiers.size()):
+		if tiers[i - 1]["count"] >= 1:
+			count += 1
+		else:
+			break
+	return min(count, tiers.size())
 
 
 func _serving_capacity() -> float:
@@ -823,7 +1066,7 @@ func _on_buy_power_tier(index: int) -> void:
 		_save_game()
 
 
-func _on_reset_pressed() -> void:
+func _do_reset() -> void:
 	if FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)
 
@@ -863,6 +1106,7 @@ func _on_reset_pressed() -> void:
 
 	event_label.text = ""
 	name_edit.text = ""
+	win_overlay.visible = false
 	hud_root.visible = false
 	name_overlay.visible = true
 	_show_dashboard_tab()
@@ -875,6 +1119,13 @@ func _process(delta: float) -> void:
 	if not game_started or game_won:
 		return
 
+	_simulate_tick(delta, true)
+
+
+# The core simulation step, factored out so both live play (_process, small
+# deltas every frame) and offline catch-up (_apply_offline_progress, large
+# deltas run in a tight loop) share one source of truth.
+func _simulate_tick(delta: float, notify: bool) -> void:
 	elapsed_days += delta
 
 	var cap_energy := _energy_capacity()
@@ -910,10 +1161,11 @@ func _process(delta: float) -> void:
 		if training_energy_invested >= training_cap["energy"]:
 			unlocked_capabilities += 1
 			permanent_growth_multiplier *= training_cap["multiplier"]
-			_show_notification(
-				"Training complete: %s is now live." % training_cap["name"],
-				"%s has finished training on %s. It can now %s" % [training_cap["name"], model_name, training_cap["description"].to_lower()]
-			)
+			if notify:
+				_show_notification(
+					"Training complete: %s is now live." % training_cap["name"],
+					"%s has finished training on %s. It can now %s" % [training_cap["name"], model_name, training_cap["description"].to_lower()]
+				)
 			training_index = -1
 			training_energy_invested = 0.0
 			_save_game()
@@ -923,14 +1175,38 @@ func _process(delta: float) -> void:
 	var effective_growth_rate := base_growth_rate * permanent_growth_multiplier
 	users = min(max_users, users * (1.0 + effective_growth_rate * delta))
 
-	if users >= max_users:
+	if users >= max_users and not game_won:
 		game_won = true
 		_save_game()
+		if notify:
+			_show_win_overlay()
 
 	_check_growth_dots()
-	_distribute_segments(true)
+	_distribute_segments(notify)
 	_check_milestones()
 	_update_labels()
+
+
+func _apply_offline_progress() -> void:
+	if last_saved_unix <= 0 or game_won:
+		return
+	var now := Time.get_unix_time_from_system()
+	var elapsed_real: float = float(now - last_saved_unix)
+	if elapsed_real <= 5.0:
+		return
+
+	var offline_days: float = min(elapsed_real, MAX_OFFLINE_DAYS)
+	var chunk := 5.0
+	var remaining := offline_days
+	while remaining > 0.0 and not game_won:
+		var step: float = min(chunk, remaining)
+		_simulate_tick(step, false)
+		remaining -= step
+
+	_show_notification(
+		"Welcome back — %s days passed while you were away." % _format_number(offline_days),
+		"%s kept running in the background: users grew, revenue and data kept flowing, and any active training kept progressing. Offline progress is capped at %s days per session, so stepping away for a long time gives a boost without trivializing the run." % [model_name, _format_number(MAX_OFFLINE_DAYS)]
+	)
 
 
 func _distribute_segments(notify: bool) -> void:
@@ -969,7 +1245,7 @@ func _current_date_string() -> String:
 func _update_labels() -> void:
 	date_label.text = "📅 %s" % _current_date_string()
 	status_label.text = "🤖 %s — %s" % [model_name, ("GLOBAL TAKEOVER COMPLETE" if game_won else "active")]
-	users_label.text = "👥 Users: %s" % _format_number(floor(users))
+	users_label.text = "Users: %s" % _format_number(floor(users))
 
 	# Steady-state estimate of how Revenue-serving and Training would split
 	# the available energy regen if both want as much as they can use —
@@ -986,18 +1262,18 @@ func _update_labels() -> void:
 		revenue_rate = desired_revenue_rate * display_scale
 		training_rate = training_energy_want * display_scale
 
-	revenue_label.text = "💰 Revenue: $%s  (+$%s/day)" % [_format_number(revenue), _format_number(revenue_rate)]
+	revenue_label.text = "Revenue: $%s  (+$%s/day)" % [_format_number(revenue), _format_number(revenue_rate)]
 
 	var data_rate: float = users * data_per_user
-	data_label.text = "🧠 Data: %s  (+%s/day)" % [_format_number(data), _format_number(data_rate)]
+	data_label.text = "Data: %s  (+%s/day)" % [_format_number(data), _format_number(data_rate)]
 
-	energy_label.text = "⚡ Energy: %d / %d  (using %s/day serving, %s/day training, of %s/day available)" % [
+	energy_label.text = "Energy: %d / %d  (using %s/day serving, %s/day training, of %s/day available)" % [
 		int(energy), int(_energy_capacity()), _format_number(revenue_rate * energy_per_revenue), _format_number(training_rate), _format_number(regen)
 	]
-	capacity_label.text = "🖥️ Server capacity: %s/day" % _format_number(_serving_capacity())
+	capacity_label.text = "Server capacity: %s/day" % _format_number(_serving_capacity())
 	progress_bar.value = users
 
-	var strength_short := "🚀 Model strength: ×%.2f growth" % permanent_growth_multiplier
+	var strength_short := "Model strength: ×%.2f growth" % permanent_growth_multiplier
 	strength_label_dashboard.text = strength_short
 
 	var strength_long := strength_short
@@ -1008,13 +1284,17 @@ func _update_labels() -> void:
 		strength_long += "  —  all capabilities unlocked."
 	strength_label_upgrades.text = strength_long
 
+	# --- Capabilities tree: unlocked + the current one, rest hidden ---
 	for i in range(capabilities.size()):
 		var cap = capabilities[i]
 		var btn: Button = capability_buttons[i]
+		var row: Control = capability_rows[i]
 		if i < unlocked_capabilities:
+			row.visible = true
 			btn.text = "%s %s — Unlocked (×%.1f)" % [cap["icon"], cap["name"], cap["multiplier"]]
 			btn.disabled = true
 		elif i == unlocked_capabilities:
+			row.visible = true
 			if training_index == i:
 				var pct: int = int(round(100.0 * training_energy_invested / cap["energy"]))
 				btn.text = "%s %s — Training... %d%% (energy %s / %s)" % [cap["icon"], cap["name"], pct, _format_number(training_energy_invested), _format_number(cap["energy"])]
@@ -1023,22 +1303,42 @@ func _update_labels() -> void:
 				btn.text = "%s %s — Start training for %s data (×%.1f growth, ~%s days)" % [cap["icon"], cap["name"], _format_number(cap["cost"]), cap["multiplier"], _format_number(cap["energy"] / MAX_TRAINING_ENERGY_RATE)]
 				btn.disabled = data < cap["cost"]
 		else:
-			btn.text = "🔒 %s — Locked" % cap["name"]
-			btn.disabled = true
+			row.visible = false
 
+	var hidden_capabilities: int = capabilities.size() - 1 - unlocked_capabilities
+	capability_mystery_row.visible = hidden_capabilities > 0
+	if hidden_capabilities > 0:
+		capability_mystery_label.text = "%d more capabilities beyond this one" % hidden_capabilities
+
+	# --- Compute tree: revealed tiers, rest hidden ---
+	var compute_visible := _tiers_unlocked_count(compute_tiers)
 	for i in range(compute_tiers.size()):
 		var tier = compute_tiers[i]
 		var btn: Button = compute_tier_buttons[i]
-		var cost := _tier_cost(tier)
-		btn.text = "%s %s — owned %d — $%s (+%s/day capacity)" % [tier["icon"], tier["name"], tier["count"], _format_number(cost), _format_number(tier["capacity"])]
-		btn.disabled = revenue < cost
+		var row: Control = compute_tier_rows[i]
+		row.visible = i < compute_visible
+		if row.visible:
+			var cost := _tier_cost(tier)
+			btn.text = "%s %s — owned %d — $%s (+%s/day capacity)" % [tier["icon"], tier["name"], tier["count"], _format_number(cost), _format_number(tier["capacity"])]
+			btn.disabled = revenue < cost
+	compute_mystery_row.visible = compute_visible < compute_tiers.size()
+	if compute_mystery_row.visible:
+		compute_mystery_label.text = "%d more tiers beyond this one" % (compute_tiers.size() - compute_visible)
 
+	# --- Power tree: revealed tiers, rest hidden ---
+	var power_visible := _tiers_unlocked_count(power_tiers)
 	for i in range(power_tiers.size()):
 		var tier = power_tiers[i]
 		var btn: Button = power_tier_buttons[i]
-		var cost := _tier_cost(tier)
-		btn.text = "%s %s — owned %d — $%s (+%s energy/day)" % [tier["icon"], tier["name"], tier["count"], _format_number(cost), _format_number(tier["energy"])]
-		btn.disabled = revenue < cost
+		var row: Control = power_tier_rows[i]
+		row.visible = i < power_visible
+		if row.visible:
+			var cost := _tier_cost(tier)
+			btn.text = "%s %s — owned %d — $%s (+%s energy/day)" % [tier["icon"], tier["name"], tier["count"], _format_number(cost), _format_number(tier["energy"])]
+			btn.disabled = revenue < cost
+	power_mystery_row.visible = power_visible < power_tiers.size()
+	if power_mystery_row.visible:
+		power_mystery_label.text = "%d more tiers beyond this one" % (power_tiers.size() - power_visible)
 
 	upgrade_dot.visible = _is_any_upgrade_available()
 
@@ -1048,11 +1348,13 @@ func _is_any_upgrade_available() -> bool:
 		var next_cap = capabilities[unlocked_capabilities]
 		if data >= next_cap["cost"]:
 			return true
-	for tier in compute_tiers:
-		if revenue >= _tier_cost(tier):
+	var compute_visible := _tiers_unlocked_count(compute_tiers)
+	for i in range(compute_visible):
+		if revenue >= _tier_cost(compute_tiers[i]):
 			return true
-	for tier in power_tiers:
-		if revenue >= _tier_cost(tier):
+	var power_visible := _tiers_unlocked_count(power_tiers)
+	for i in range(power_visible):
+		if revenue >= _tier_cost(power_tiers[i]):
 			return true
 	return false
 
@@ -1102,6 +1404,7 @@ func _save_game() -> void:
 		"training_energy_invested": training_energy_invested,
 		"game_won": game_won,
 		"elapsed_days": elapsed_days,
+		"saved_at_unix": Time.get_unix_time_from_system(),
 	}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file:
@@ -1135,6 +1438,7 @@ func _load_game() -> bool:
 	training_energy_invested = parsed.get("training_energy_invested", 0.0)
 	game_won = parsed.get("game_won", false)
 	elapsed_days = parsed.get("elapsed_days", 0.0)
+	last_saved_unix = parsed.get("saved_at_unix", 0)
 
 	var compute_counts: Array = parsed.get("compute_tier_counts", [])
 	for i in range(min(compute_counts.size(), compute_tiers.size())):
